@@ -103,8 +103,31 @@ def evaluate_math(
         device: Device to run on (auto-detects if None)
         dtype: Model dtype (float16 or bfloat16)
     """
+    # All available subareas in MATH dataset
+    MATH_SUBAREAS = [
+        'algebra',
+        'counting_and_probability', 
+        'geometry',
+        'intermediate_algebra',
+        'number_theory',
+        'prealgebra',
+        'precalculus'
+    ]
+    
     print(f"Loading MATH dataset (split: {split})...")
-    dataset = load_dataset("EleutherAI/hendrycks_math", split=split)
+    
+    # Load and concatenate all subareas
+    from datasets import concatenate_datasets
+    datasets_list = []
+    for subarea in MATH_SUBAREAS:
+        print(f"  Loading {subarea}...")
+        ds = load_dataset("EleutherAI/hendrycks_math", subarea, split=split)
+        # Add subarea as a column for tracking
+        ds = ds.add_column("subarea", [subarea] * len(ds))
+        datasets_list.append(ds)
+    
+    dataset = concatenate_datasets(datasets_list)
+    print(f"  Total: {len(dataset)} problems")
     
     if num_samples is not None:
         dataset = dataset.select(range(min(num_samples, len(dataset))))
@@ -143,7 +166,7 @@ def evaluate_math(
         gold_solution = example["solution"]
         gold_answer = extract_boxed_answer(gold_solution)
         level = example.get("level", "unknown")
-        problem_type = example.get("type", "unknown")
+        subarea = example.get("subarea", "unknown")
         
         # Format prompt (same for both models)
         prompt = format_prompt(problem, tokenizer1)
@@ -184,7 +207,7 @@ def evaluate_math(
             "generated": generated,
             "correct": is_correct,
             "level": level,
-            "type": problem_type,
+            "subarea": subarea,
         }
         results.append(result)
         
@@ -217,14 +240,14 @@ def evaluate_math(
         level_acc = level_correct / len(level_results) * 100 if level_results else 0
         print(f"  {level}: {level_correct}/{len(level_results)} = {level_acc:.1f}%")
     
-    # Breakdown by type
-    print("\nAccuracy by type:")
-    types = set(r["type"] for r in results)
-    for ptype in sorted(types):
-        type_results = [r for r in results if r["type"] == ptype]
-        type_correct = sum(1 for r in type_results if r["correct"])
-        type_acc = type_correct / len(type_results) * 100 if type_results else 0
-        print(f"  {ptype}: {type_correct}/{len(type_results)} = {type_acc:.1f}%")
+    # Breakdown by subarea
+    print("\nAccuracy by subarea:")
+    subareas = set(r["subarea"] for r in results)
+    for subarea in sorted(subareas):
+        subarea_results = [r for r in results if r["subarea"] == subarea]
+        subarea_correct = sum(1 for r in subarea_results if r["correct"])
+        subarea_acc = subarea_correct / len(subarea_results) * 100 if subarea_results else 0
+        print(f"  {subarea}: {subarea_correct}/{len(subarea_results)} = {subarea_acc:.1f}%")
     
     # Save results
     output_file = "math_eval_results.json"
