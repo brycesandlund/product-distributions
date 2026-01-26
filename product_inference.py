@@ -55,7 +55,11 @@ def product_distribution_inference(
     model1.config.use_cache = True
     model2.config.use_cache = True
     
+    # Check if we can skip duplicate model calls (same model AND same prompt)
+    same_model_and_prompt = (model1 is model2) and (prompt1 == prompt2)
+    
     # Tokenize initial prompts
+    # Shape: (1, seq_len1) and (1, seq_len2) - batch size 1, variable sequence lengths
     input_ids1 = tokenizer1.encode(prompt1, return_tensors="pt").to(device)
     input_ids2 = tokenizer2.encode(prompt2, return_tensors="pt").to(device)
     
@@ -67,70 +71,99 @@ def product_distribution_inference(
     seq_len1 = input_ids1.shape[1]
     seq_len2 = input_ids2.shape[1]
     
-    # Track generated tokens
-    generated_tokens = []
+    # Pre-allocate attention masks at max size to avoid repeated allocations
+    # Shape: (1, max_seq_len) - we slice these during generation
+    max_seq_len1 = seq_len1 + max_new_tokens
+    max_seq_len2 = seq_len2 + max_new_tokens
+    attention_mask1_full = torch.ones(1, max_seq_len1, device=device, dtype=torch.long)
+    attention_mask2_full = torch.ones(1, max_seq_len2, device=device, dtype=torch.long)
+    
+    # Pre-allocate buffer for generated tokens
+    # Shape: (1, max_new_tokens) - stores generated token IDs
+    generated_buffer = torch.zeros(1, max_new_tokens, device=device, dtype=torch.long)
+    num_generated = 0
     
     with torch.inference_mode():
         for step in range(max_new_tokens):
             # For first step, pass full sequence; for subsequent steps, only last token
             if step == 0:
+                # current_input shape: (1, seq_len) - full prompt
+                # attention_mask shape: (1, seq_len) - all ones for prompt tokens
                 current_input1 = input_ids1
                 current_input2 = input_ids2
-                attention_mask1 = torch.ones_like(input_ids1)
-                attention_mask2 = torch.ones_like(input_ids2)
+                attention_mask1 = attention_mask1_full[:, :seq_len1]
+                attention_mask2 = attention_mask2_full[:, :seq_len2]
             else:
-                current_input1 = input_ids1[:, -1:]
-                current_input2 = input_ids2[:, -1:]
-                # Attention mask must cover full sequence including cached tokens
-                attention_mask1 = torch.ones(1, seq_len1 + step, device=device, dtype=torch.long)
-                attention_mask2 = torch.ones(1, seq_len2 + step, device=device, dtype=torch.long)
+                # current_input shape: (1, 1) - just the last generated token
+                # attention_mask shape: (1, seq_len + step) - grows by 1 each step
+                current_input1 = next_token
+                current_input2 = next_token
+                # Slice pre-allocated attention mask
+                attention_mask1 = attention_mask1_full[:, :seq_len1 + step]
+                attention_mask2 = attention_mask2_full[:, :seq_len2 + step]
             
-            # Get logits from both models with cache
+            # Get logits from model(s) with cache
+            # outputs.logits shape: (1, input_seq_len, vocab_size)
+            #   - Step 0: (1, seq_len, vocab_size)
+            #   - Step 1+: (1, 1, vocab_size) since we only pass the last token
             outputs1 = model1(
                 current_input1,
                 attention_mask=attention_mask1,
                 past_key_values=past_key_values1,
                 use_cache=True
             )
-            outputs2 = model2(
-                current_input2,
-                attention_mask=attention_mask2,
-                past_key_values=past_key_values2,
-                use_cache=True
-            )
+            
+            # Skip second model call if same model and prompt
+            if same_model_and_prompt:
+                outputs2 = outputs1
+            else:
+                outputs2 = model2(
+                    current_input2,
+                    attention_mask=attention_mask2,
+                    past_key_values=past_key_values2,
+                    use_cache=True
+                )
             
             # Update cache for next iteration
+            # past_key_values: tuple of (num_layers) tuples, each containing:
+            #   (key, value) tensors of shape (batch, num_heads, seq_len, head_dim)
             past_key_values1 = outputs1.past_key_values
-            past_key_values2 = outputs2.past_key_values
+            if not same_model_and_prompt:
+                past_key_values2 = outputs2.past_key_values
             
             # Get logits for next token (last position)
+            # Shape: (1, vocab_size) - select last token's logits from each model
             logits1 = outputs1.logits[:, -1, :] / temperature
             logits2 = outputs2.logits[:, -1, :] / temperature
             
-            # Convert to probabilities
-            probs1 = F.softmax(logits1, dim=-1)
-            probs2 = F.softmax(logits2, dim=-1)
+            # Compute weighted product distribution in log space (more efficient & stable)
+            # P ∝ P1^λ * P2^(1-λ) => log P ∝ λ*log(P1) + (1-λ)*log(P2)
+            # Shape: (1, vocab_size) for all log_probs and combined
+            log_probs1 = F.log_softmax(logits1, dim=-1)
+            log_probs2 = F.log_softmax(logits2, dim=-1)
+            combined_log_probs = lam * log_probs1 + (1 - lam) * log_probs2
             
-            # Compute weighted product distribution: P ∝ P1^λ * P2^(1-λ)
-            product_probs = (probs1 ** lam) * (probs2 ** (1 - lam))
-            
-            # Renormalize
-            product_probs = product_probs / product_probs.sum(dim=-1, keepdim=True)
+            # Convert back to probabilities (softmax normalizes automatically)
+            # Shape: (1, vocab_size) - normalized probability distribution
+            product_probs = F.softmax(combined_log_probs, dim=-1)
             
             # Sample from product distribution
+            # Shape: (1, 1) - single sampled token ID
             next_token = torch.multinomial(product_probs, num_samples=1)
             
-            # Track and append to both sequences
-            generated_tokens.append(next_token)
-            input_ids1 = torch.cat([input_ids1, next_token], dim=1)
-            input_ids2 = torch.cat([input_ids2, next_token], dim=1)
+            # Store in pre-allocated buffer
+            # next_token.squeeze(-1) shape: (1,) - remove last dim for assignment
+            generated_buffer[:, num_generated] = next_token.squeeze(-1)
+            num_generated += 1
             
             # Stop on EOS token
             if next_token.item() == tokenizer1.eos_token_id:
                 break
     
     # Decode the generated tokens
-    generated_token_ids = torch.cat(generated_tokens, dim=1)
+    # Shape: (1, num_generated) - slice buffer to only include actual generated tokens
+    generated_token_ids = generated_buffer[:, :num_generated]
+    # Shape: (num_generated,) - remove batch dimension for decoder
     generated_text = tokenizer1.decode(generated_token_ids[0], skip_special_tokens=True)
     
     return generated_text
@@ -141,14 +174,26 @@ if __name__ == "__main__":
     
     model_name = "Qwen/Qwen3-1.7B"
     
+    # Auto-detect device
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    
     print(f"Loading model: {model_name}")
+    print(f"Device: {device}")
+    
+    # Use Flash Attention on CUDA, eager on MPS
+    attn_impl = "eager" if device == "mps" else "flash_attention_2"
     
     # Load model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16,  # Use fp16 for memory efficiency
-        attn_implementation="eager",  # Use eager attention for MPS compatibility
+        attn_implementation=attn_impl,
     )
 
     numbers_str = "1, 2, 5"

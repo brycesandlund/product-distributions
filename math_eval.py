@@ -137,10 +137,15 @@ def evaluate_math(
     # Load models and tokenizers
     print(f"\nLoading model 1: {model1_name}")
     tokenizer1 = AutoTokenizer.from_pretrained(model1_name)
+    
+    # Use Flash Attention on CUDA, eager on MPS (for compatibility)
+    attn_impl = "eager" if device == "mps" else "flash_attention_2"
+    print(f"Using attention implementation: {attn_impl}")
+    
     model1 = AutoModelForCausalLM.from_pretrained(
         model1_name,
         torch_dtype=dtype,
-        attn_implementation="eager",  # MPS compatibility
+        attn_implementation=attn_impl,
     )
     
     if model1_name == model2_name:
@@ -153,8 +158,21 @@ def evaluate_math(
         model2 = AutoModelForCausalLM.from_pretrained(
             model2_name,
             torch_dtype=dtype,
-            attn_implementation="eager",
+            attn_implementation=attn_impl,
         )
+    
+    model1.to(device)
+    model2.to(device)
+    model1.eval()
+    model2.eval()
+    
+    # Compile models for faster inference (PyTorch 2.0+)
+    # Skip on MPS as torch.compile support is limited
+    if device != "mps":
+        print("Compiling models with torch.compile...")
+        model1 = torch.compile(model1)
+        if model1_name != model2_name:
+            model2 = torch.compile(model2)
     
     # Evaluate
     results = []
@@ -188,6 +206,9 @@ def evaluate_math(
         except Exception as e:
             print(f"\nError on problem {i}: {e}")
             generated = ""
+
+        print(f"Prompt 1: {prompt}")
+        print(f"Generated: {generated}")
         
         # Extract predicted answer
         pred_answer = extract_boxed_answer(generated)
@@ -281,9 +302,9 @@ if __name__ == "__main__":
                         help="First model name")
     parser.add_argument("--model2", type=str, default="Qwen/Qwen3-1.7B",
                         help="Second model name")
-    parser.add_argument("--num-samples", type=int, default=None,
-                        help="Number of samples to evaluate (default: all)")
-    parser.add_argument("--max-tokens", type=int, default=512,
+    parser.add_argument("--num-samples", type=int, default=20,
+                        help="Number of samples to evaluate (default: 20)")
+    parser.add_argument("--max-tokens", type=int, default=1024,
                         help="Maximum tokens to generate")
     parser.add_argument("--temperature", type=float, default=0.7,
                         help="Sampling temperature")
@@ -294,6 +315,16 @@ if __name__ == "__main__":
                         help="Dataset split to use")
     
     args = parser.parse_args()
+
+    device = None
+    # Auto-detect device with MPS support
+    if device is None:
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
     
     evaluate_math(
         model1_name=args.model1,
@@ -303,5 +334,6 @@ if __name__ == "__main__":
         temperature=args.temperature,
         lam=args.lam,
         split=args.split,
+        device=device,
     )
 
