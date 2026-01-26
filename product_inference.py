@@ -12,11 +12,14 @@ def product_distribution_inference(
     tokenizer2,
     max_new_tokens: int = 50,
     temperature: float = 1.0,
+    lam: float = 0.5,
     device: Optional[str] = None
 ) -> str:
     """
-    Generate text using the product of two models' probability distributions.
+    Generate text using a weighted product of two models' probability distributions.
     Uses KV cache for efficient generation.
+    
+    The combined distribution is: P ∝ P1^λ * P2^(1-λ)
     
     Args:
         model1: First PyTorch model (nn.Module)
@@ -27,6 +30,8 @@ def product_distribution_inference(
         tokenizer2: Tokenizer for model2
         max_new_tokens: Maximum number of tokens to generate
         temperature: Sampling temperature (lower = more deterministic)
+        lam: Interpolation weight (0 <= lam <= 1). lam=1 uses only model1,
+             lam=0 uses only model2, lam=0.5 weights both equally
         device: Device to run inference on (auto-detects if None)
         
     Returns:
@@ -106,8 +111,8 @@ def product_distribution_inference(
             probs1 = F.softmax(logits1, dim=-1)
             probs2 = F.softmax(logits2, dim=-1)
             
-            # Compute product distribution
-            product_probs = probs1 * probs2
+            # Compute weighted product distribution: P ∝ P1^λ * P2^(1-λ)
+            product_probs = (probs1 ** lam) * (probs2 ** (1 - lam))
             
             # Renormalize
             product_probs = product_probs / product_probs.sum(dim=-1, keepdim=True)
@@ -145,13 +150,33 @@ if __name__ == "__main__":
         torch_dtype=torch.float16,  # Use fp16 for memory efficiency
         attn_implementation="eager",  # Use eager attention for MPS compatibility
     )
+
+    numbers_str = "1, 2, 5"
+    target = 10
+
+    prompt_content_1 = f"Using the numbers {numbers_str} exactly once, create a mathematical expression using +, -, *, /, and/or () that equals {target}. Please reason step by step, and put your final expression in <answer></answer> tags, for example, <answer>4*5-4</answer>."
+    prompt_content_2 = prompt_content_1 + " The answer is 1*2*5=10."
+    
+    # Format with chat template so the model knows where instructions end
+    messages_1 = [{"role": "user", "content": prompt_content_2}]
+    messages_2 = [{"role": "user", "content": prompt_content_2}]
+    formatted_prompt_1 = tokenizer.apply_chat_template(
+        messages_1, 
+        add_generation_prompt=True, 
+        tokenize=False
+    )
+    formatted_prompt_2 = tokenizer.apply_chat_template(
+        messages_2, 
+        add_generation_prompt=True, 
+        tokenize=False
+    )
     
     # Test prompts - using the same model twice for demonstration
-    prompt1 = "The future of artificial intelligence is"
-    prompt2 = "The future of artificial intelligence is"
+    prompt1 = formatted_prompt_1
+    prompt2 = formatted_prompt_2
     
     print(f"\nPrompt 1: {prompt1}")
-    print(f"Prompt 2: {prompt2}")
+    print(f"Prompt 2: {prompt2}")   
     print("\nGenerating with product distribution...")
     
     # Run product distribution inference
@@ -163,8 +188,9 @@ if __name__ == "__main__":
         prompt2=prompt2,
         tokenizer1=tokenizer,
         tokenizer2=tokenizer,
-        max_new_tokens=100,
-        temperature=0.7
+        max_new_tokens=250,
+        temperature=0.7,
+        lam=0.5
     )
     
     print(f"\nGenerated text:\n{generated_text}")
