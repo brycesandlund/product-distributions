@@ -300,7 +300,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate models on MATH using product distribution")
     parser.add_argument("--model1", type=str, default="Qwen/Qwen3-1.7B",
                         help="First model name")
-    parser.add_argument("--model2", type=str, default="Qwen/Qwen3-1.7B",
+    parser.add_argument("--model2", type=str, default="nvidia/AceMath-1.5B-Instruct",
                         help="Second model name")
     parser.add_argument("--num-samples", type=int, default=20,
                         help="Number of samples to evaluate (default: 20)")
