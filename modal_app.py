@@ -13,18 +13,15 @@ RESULTS_PATH = "/results"
 
 app = modal.App(APP_NAME)
 
-runtime_image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .uv_pip_install(
-        "torch==2.14.0",
-        "transformers==5.16.1",
-        "accelerate==1.14.0",
-        "huggingface-hub==1.30.0",
-        "safetensors>=0.6.2",
-        "flash-linear-attention[cuda]==0.5.2",
-    )
-    .add_local_python_source("product_distributions")
+runtime_base_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
+    "torch==2.14.0",
+    "transformers==5.16.1",
+    "accelerate==1.14.0",
+    "huggingface-hub==1.30.0",
+    "safetensors>=0.6.2",
+    "flash-linear-attention[cuda]==0.5.2",
 )
+runtime_image = runtime_base_image.add_local_python_source("product_distributions")
 
 model_cache = modal.Volume.from_name(
     "product-distributions-hf-cache", create_if_missing=True

@@ -1,0 +1,8 @@
+{
+  "loss": "opd",
+  "alpha": 0.5,
+  "steps": 10,
+  "group_size": 4,
+  "max_new_tokens": 512,
+  "enable_thinking": true
+}

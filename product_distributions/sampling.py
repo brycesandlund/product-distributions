@@ -22,6 +22,7 @@ class SamplingConfig:
     max_new_tokens: int = 128
     seed: int | None = None
     compute_diagnostics: bool = False
+    record_logprobs: bool = False
 
     def validate(self) -> None:
         if not 0.0 <= self.teacher_weight <= 1.0:
@@ -48,6 +49,9 @@ class ProductGenerationResult:
     mean_behavior_logprob: float
     mean_teacher_student_kl: float | None
     teacher_weight: float
+    student_logprobs: list[float] | None = None
+    teacher_logprobs: list[float] | None = None
+    behavior_logprobs: list[float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -292,6 +296,9 @@ class ProductSampler:
             else None
         )
         generated_steps: list[torch.Tensor] = []
+        recorded_student: list[torch.Tensor] = []
+        recorded_teacher: list[torch.Tensor] = []
+        recorded_behavior: list[torch.Tensor] = []
         eos_ids = _eos_ids(self.student_tokenizer, self.teacher_tokenizer)
         eos_tensor = torch.tensor(sorted(eos_ids), device=student_device)
         fallback_token_id = self.student_tokenizer.pad_token_id
@@ -320,6 +327,17 @@ class ProductSampler:
                 torch.full_like(sampled_ids, fallback_token_id),
             )
             generated_steps.append(sampled_ids)
+            if config.record_logprobs:
+                index = sampled_ids.unsqueeze(-1)
+                recorded_student.append(
+                    student_logits.gather(-1, index).squeeze(-1)
+                    - student_logits.logsumexp(-1)
+                )
+                recorded_teacher.append(
+                    teacher_logits.gather(-1, index).squeeze(-1)
+                    - teacher_logits.logsumexp(-1)
+                )
+                recorded_behavior.append(sampled_logprobs)
             behavior_logprob_sums += sampled_logprobs * was_active
             lengths += was_active
 
@@ -373,6 +391,10 @@ class ProductSampler:
             else [None] * batch_size
         )
         aggregate_tps = int(lengths.sum().item()) / elapsed if elapsed else 0.0
+        recorded = [
+            torch.stack(values, dim=1).cpu().tolist() if values else None
+            for values in (recorded_student, recorded_teacher, recorded_behavior)
+        ]
 
         results = []
         for index, length in enumerate(lengths_cpu):
@@ -389,6 +411,15 @@ class ProductSampler:
                     mean_behavior_logprob=behavior_means[index],
                     mean_teacher_student_kl=kl_means[index],
                     teacher_weight=config.teacher_weight,
+                    student_logprobs=recorded[0][index][:length]
+                    if recorded[0]
+                    else None,
+                    teacher_logprobs=recorded[1][index][:length]
+                    if recorded[1]
+                    else None,
+                    behavior_logprobs=recorded[2][index][:length]
+                    if recorded[2]
+                    else None,
                 )
             )
         return results

@@ -105,3 +105,22 @@ def test_distinct_token_vocabularies_are_rejected():
         assert "identical token-to-ID vocabularies" in str(error)
     else:
         raise AssertionError("expected incompatible tokenizers to fail")
+
+
+def test_recorded_logprobs_are_full_support_sampling_probabilities():
+    tokenizer = FakeTokenizer()
+    model = FakeModel(preferred_token=2)
+    result = ProductSampler(model, tokenizer).generate(
+        "student",
+        "teacher",
+        config=SamplingConfig(
+            top_k=None,
+            top_p=None,
+            record_logprobs=True,
+            max_new_tokens=3,
+        ),
+    )[0]
+    assert result.token_ids == [2, 7]
+    assert result.student_logprobs == [0.0, 0.0]
+    assert result.teacher_logprobs == [0.0, 0.0]
+    assert result.behavior_logprobs == [0.0, 0.0]
