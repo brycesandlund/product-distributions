@@ -103,3 +103,44 @@ uv run python scripts/train_modal.py train \
 
 Artifacts are in `runs/teacher27b-opd-20260916-000143` on the results volume;
 metrics and runtime metadata are also downloaded into local `artifacts/`.
+
+## Full-vocabulary product-to-teacher OPD
+
+Implemented `opd_full`: exact `KL(product || detached teacher)` over vocabulary
+at fixed sampled prefixes, differentiating the product probabilities and log
+probabilities through the student. No reward weighting or return-to-go. Existing
+sampled `opd` and imitation weighting remain unchanged. All 14 local tests pass,
+including agreement with the expected sampled-estimator gradient, alpha endpoints,
+teacher detachment, and fixed-length normalization.
+
+Deployed and tested both paths on H100, alpha=0.5, two 512-token rollouts,
+thinking enabled, one LoRA update:
+
+| Run | Peak allocated GiB | Rollout seconds / 1,024 tokens | Update seconds | Gradient norm |
+| --- | ---: | ---: | ---: | ---: |
+| `self-opd-full-20260916-test` | 21.39 | 61.26 | 3.75 | 0.0389 |
+| `teacher27b-opd-full-20260916-test` | 72.58 | 81.16 | 5.40 | 0.2467 |
+
+Both adapter updates were nonzero and both checkpoint reloads had exactly zero
+maximum logit error. Self-teacher and separate-teacher maximum student-logprob
+recomputation discrepancies were 0.249 and 0.156 nats respectively. All rollouts
+were truncated with reward zero: this verifies execution and memory feasibility,
+not learning quality. Timing differences from prior runs are not controlled
+benchmarks. The 27B configuration used about 0.95 GiB more peak allocated memory
+than the earlier sampled-OPD test; longer sequences still require testing.
+
+Reproduce the separate-teacher test with `configs/opd_full_teacher27b_smoke.json`
+and `--data-name deepmath-smoke --gpu H100`. The self-teacher mode is configured
+in `configs/opd_full.json` (ten steps by default). Metrics are saved in the
+corresponding results-volume run directories and local `artifacts/`.
+
+### Subsequent imitation-weight update
+
+By user request, imitation now uses
+`beta * R + reward_scale * (R - group_mean_R)`, with default
+`reward_scale = 1 - beta`. For binary verification, beta=1 trains only successful
+rollouts, beta=0 remains centered reinforcement, and the group mean weight is
+`beta * group_mean_R`. Independent scale remains supported. OPD is unaffected.
+Tests cover mixed, all-failed, and all-successful groups and detached rewards.
+Old imitation checkpoints are rejected on resume to prevent a silent objective
+change. No additional GPU learning claim is made for this weighting change.

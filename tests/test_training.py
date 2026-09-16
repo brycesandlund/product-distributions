@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import torch
 
-from product_distributions.training import TrainConfig, completion_logits
+from product_distributions.training import TrainConfig, Trainer, completion_logits
 
 
 def test_completion_alignment_excludes_prompt_and_predicts_eos():
@@ -40,3 +40,13 @@ def test_config_rejects_invalid_sampling_and_loss():
     ):
         with pytest.raises(ValueError):
             TrainConfig(**override).validate()
+
+
+def test_resume_rejects_old_imitation_weight_semantics(tmp_path):
+    import pytest
+
+    (tmp_path / "state.json").write_text("{}")
+    trainer = object.__new__(Trainer)
+    trainer.config = TrainConfig(loss="imitation")
+    with pytest.raises(ValueError, match="old weight semantics"):
+        trainer.resume(str(tmp_path))

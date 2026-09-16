@@ -1,0 +1,9 @@
+{
+  "loss": "opd_full",
+  "teacher_model_id": "Qwen/Qwen3.8-27B",
+  "alpha": 0.5,
+  "steps": 1,
+  "group_size": 2,
+  "max_new_tokens": 512,
+  "enable_thinking": true
+}

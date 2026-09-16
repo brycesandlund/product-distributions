@@ -104,21 +104,37 @@ actual completion lengths. Prompt tokens are excluded; generated EOS is included
 Rollouts use temperature 1 and no top-k/top-p truncation. Generation stops at EOS
 or the configured length cap; incomplete responses and verifier statuses are logged.
 
-Two losses are available:
+Three loss modes are available:
 
 - `imitation`: sampled student log-likelihood weighted by
-  `beta + reward_scale * (reward - group_mean_reward)`. If `reward_scale` is null,
-  it is `1 - beta`. `beta=0` is centered reinforcement, and `beta=1` is equal-weight
-  imitation of all rollouts (not correctness-filtered SFT).
+  `beta * reward + reward_scale * (reward - group_mean_reward)`.
+  If `reward_scale` is null, it is `1 - beta`, giving
+  `w_beta = (1 - beta) * (R - mean(R)) + beta * R`. The mean is per question's
+  rollout group. With binary rewards, `beta=0` is centered reinforcement and
+  `beta=1` imitates only successful rollouts at weight one. All-failed groups
+  have zero weight; all-successful groups have weight beta. Beta is no longer
+  the mean weight: the group mean weight is `beta * mean(R)`. Non-binary reward
+  calibration is left for later; no clipping or rescaling is applied implicitly.
+  Old imitation checkpoints using constant-offset weights cannot be resumed
+  silently under these new semantics; the checkpoint loader rejects them.
 - `opd`: sampled, token-local product-to-teacher reverse-KL surrogate, with
   detached `teacher_logp - behavior_logp` advantages. No verifier reward weights
   enter this loss. Gradients pass through the student part of the normalized
   product; the teacher branch is detached. `beta` and `reward_scale` are ignored.
+- `opd_full`: full-vocabulary `KL(product || teacher)` at each sampled prefix.
+  Both the product probabilities and their log probabilities are differentiated
+  through the student; the teacher is detached. No reward weights or future-state
+  return-to-go are used. `beta` and `reward_scale` are ignored. At alpha=0 this is
+  reverse-KL student-to-teacher OPD; at alpha=1 the gradient is zero.
 
-The full vocabulary is used to normalize logits, but the loss supervises only
-sampled tokens. It does not sum a full-vocabulary KL. Training recomputes teacher
+The `imitation` and `opd` modes supervise sampled actions; `opd_full` sums over
+all vocabulary actions, but still only at prefixes visited by the rollout.
+Training recomputes teacher
 logits for the product normalizer, one trajectory at a time, with no teacher
 gradient graph. Old sampled probabilities are recorded during generation.
+Full-vocabulary OPD avoids sampled-action gradient variance, not prefix sampling
+variance, and uses additional training memory. Use `configs/opd_full.json` or
+`configs/opd_full_teacher27b_smoke.json` to select it.
 
 Data preparation pins a DeepMath revision and takes a small deterministic subset
 after a question-hash train/eval split. It uses only questions and final answers,

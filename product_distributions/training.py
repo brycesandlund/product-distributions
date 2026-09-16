@@ -10,7 +10,13 @@ from time import perf_counter
 import torch
 
 from .data import prompts, read_examples, verify_answer
-from .losses import imitation_loss, opd_loss, sampled_logprobs, trajectory_weights
+from .losses import (
+    full_vocab_opd_loss,
+    imitation_loss,
+    opd_loss,
+    sampled_logprobs,
+    trajectory_weights,
+)
 from .sampling import ProductSampler, SamplingConfig
 
 
@@ -37,8 +43,8 @@ class TrainConfig:
     checkpoint_every: int = 5
 
     def validate(self):
-        if self.loss not in {"imitation", "opd"}:
-            raise ValueError("loss must be imitation or opd")
+        if self.loss not in {"imitation", "opd", "opd_full"}:
+            raise ValueError("loss must be imitation, opd, or opd_full")
         if not 0 <= self.alpha <= 1 or not 0 <= self.beta <= 1:
             raise ValueError("alpha and beta must be in [0, 1]")
         for name in (
@@ -219,6 +225,7 @@ class Trainer:
             {
                 "step": self.step,
                 "config": asdict(self.config),
+                "imitation_weighting": "reward_interpolation_v1",
                 "data_fingerprint": self.data_fingerprint,
             },
         )
@@ -226,6 +233,13 @@ class Trainer:
 
     def resume(self, directory: str):
         state = json.loads((Path(directory) / "state.json").read_text())
+        if (
+            self.config.loss == "imitation"
+            and state.get("imitation_weighting") != "reward_interpolation_v1"
+        ):
+            raise ValueError(
+                "Cannot resume imitation checkpoint with old weight semantics"
+            )
         old, new = dict(state["config"]), asdict(self.config)
         old.pop("steps")
         new.pop("steps")
@@ -308,7 +322,7 @@ class Trainer:
         ):
             ids = torch.tensor(result.token_ids, device=self.accelerator.device)
             teacher_logits = None
-            if config.loss == "opd":
+            if config.loss in {"opd", "opd_full"}:
                 self.teacher.eval()
                 with torch.no_grad():
                     teacher_logits = completion_logits(
@@ -327,6 +341,10 @@ class Trainer:
                 max_logp_error = max(max_logp_error, (logp - old).abs().max().item())
             if config.loss == "imitation":
                 loss = imitation_loss(logp, weights[index], denominator)
+            elif config.loss == "opd_full":
+                loss = full_vocab_opd_loss(
+                    logits, teacher_logits, config.alpha, denominator
+                )
             else:
                 loss = opd_loss(
                     logits,
