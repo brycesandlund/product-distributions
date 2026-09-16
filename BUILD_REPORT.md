@@ -57,8 +57,8 @@ These are systems smoke tests. The training rollouts reached their length caps
 without verified final answers. No learning gain, ceiling improvement, or
 retention improvement has been established. Before a sweep, calibrate response
 length and difficulty so that reward-based training receives useful variation.
-The stronger-teacher training option is implemented but was not GPU-tested in
-this build; the earlier two-model inference test is separate evidence.
+The initial build tested self-teaching. A subsequent stronger-teacher training
+test is recorded below.
 
 ## Artifacts
 
@@ -71,3 +71,35 @@ Volume: `product-distributions-results`.
 
 Local copies of metrics, reload checks, and data manifests are in `artifacts/`
 (gitignored). See README for launch, resume, and artifact-download commands.
+
+## 27B teacher follow-up
+
+Run `teacher27b-opd-20260916-000143` trained Qwen3.5-9B LoRA with a frozen,
+answer-privileged Qwen3.8-27B teacher on one H100 80GB. It used the existing
+sampled-token OPD loss, alpha=0.5, thinking enabled, two rollouts, and a
+512-token output cap. No full-vocabulary KL loss or new reward weighting was
+introduced for this test.
+
+- Both models plus adapters loaded at 68.64 GiB allocated.
+- Rollout peak: 69.20 GiB; training peak: 71.63 GiB allocated.
+- 1,024 output tokens in 104.32 seconds (9.82 aggregate tokens/second).
+- Loss recomputation, backward passes, and optimizer update: 16.96 seconds.
+- Gradient norm: 0.4043; adapter update norm: 0.4764; both finite and nonzero.
+- Maximum student-logprob recomputation discrepancy: 0.156 nats.
+- Checkpoint reload maximum logit error: exactly zero.
+
+The teacher remained frozen. All training rollouts reached their cap without a
+verified final answer, so this establishes hardware feasibility at this length,
+not a quality result or feasibility at longer context lengths. The peak leaves
+about 7.5 GiB below the H100's reported total memory, before allowing for other
+CUDA allocations and allocator reservations.
+
+Reproduce with:
+
+```bash
+uv run python scripts/train_modal.py train \
+  --config configs/opd_teacher27b_smoke.json --data-name deepmath-smoke --gpu H100
+```
+
+Artifacts are in `runs/teacher27b-opd-20260916-000143` on the results volume;
+metrics and runtime metadata are also downloaded into local `artifacts/`.
