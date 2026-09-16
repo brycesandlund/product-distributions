@@ -70,6 +70,40 @@ def train(
         kernel_cache.commit()
 
 
+@app.function(
+    image=training_image, cpu=8, memory=131072, timeout=3600, volumes=volume_mounts
+)
+def calibrate_lengths(
+    run_name: str,
+    data_name: str = "deepmath-v1",
+    lengths: list[int] | None = None,
+    questions: int = 4,
+    group_size: int = 4,
+    alpha: float = 0.5,
+):
+    from pathlib import Path
+
+    from product_distributions.calibration import run_calibration
+
+    for name in (run_name, data_name):
+        if Path(name).name != name:
+            raise ValueError("Run and data names must be single path components")
+    try:
+        return run_calibration(
+            f"{RESULTS_PATH}/calibration/{run_name}",
+            f"{RESULTS_PATH}/data/{data_name}",
+            HF_CACHE_PATH,
+            lengths=[2048, 4096] if lengths is None else lengths,
+            questions=questions,
+            group_size=group_size,
+            alpha=alpha,
+        )
+    finally:
+        results_volume.commit()
+        model_cache.commit()
+        kernel_cache.commit()
+
+
 @app.local_entrypoint()
 def main(
     loss: str = "imitation",

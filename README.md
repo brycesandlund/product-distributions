@@ -164,7 +164,24 @@ uv run python scripts/train_modal.py train --config configs/imitation.json \
 uv run modal volume get product-distributions-results runs/RUN artifacts/RUN
 ```
 
-For a small hardware smoke test on real data:
+For **inference-only length calibration**, with no optimizer updates:
+
+```bash
+uv run python scripts/calibrate_modal.py --lengths 2048 4096 --questions 4 --group-size 4
+```
+
+This uses the first fixed training questions, matched seeds across caps,
+Qwen3.5-9B with privileged self-context, alpha=0.5, thinking enabled, temperature
+one, and no top-k/top-p. It reports EOS completion separately from boxed-answer
+presence and verifier reward, along with mixed-success group counts, actual
+token lengths, generation throughput, and inference peak GPU memory. Full
+outputs and pinned configuration are stored under `/calibration/<run-name>` on
+the results volume. This does not measure backward-pass memory or learning.
+See [CALIBRATION_REPORT.md](CALIBRATION_REPORT.md) for the initial 2K/4K results:
+both caps truncated every sampled response, so neither is yet a validated
+training length budget. Matched seeds did not guarantee identical prefixes.
+
+For training hardware smoke tests:
 
 ```bash
 uv run modal run modal_training.py::prepare_data \
