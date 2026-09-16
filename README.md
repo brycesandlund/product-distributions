@@ -180,6 +180,9 @@ the results volume. This does not measure backward-pass memory or learning.
 See [CALIBRATION_REPORT.md](CALIBRATION_REPORT.md) for the initial 2K/4K results:
 both caps truncated every sampled response, so neither is yet a validated
 training length budget. Matched seeds did not guarantee identical prefixes.
+The follow-up [native generation inspection](NATIVE_INSPECTION_REPORT.md)
+contains full-transcript locations and results from the same prompts through
+Transformers `model.generate()`; all four native responses also reached 4K.
 
 For training hardware smoke tests:
 

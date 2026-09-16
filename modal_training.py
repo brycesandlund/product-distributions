@@ -104,6 +104,31 @@ def calibrate_lengths(
         kernel_cache.commit()
 
 
+@app.function(
+    image=training_image, cpu=8, memory=131072, timeout=1800, volumes=volume_mounts
+)
+def inspect_native_generation(
+    run_name: str, source_name: str = "lengths-9b-self-20260916"
+):
+    from pathlib import Path
+
+    from product_distributions.native_inspection import run_native_inspection
+
+    for name in (run_name, source_name):
+        if Path(name).name != name:
+            raise ValueError("Run and source names must be single path components")
+    try:
+        return run_native_inspection(
+            f"{RESULTS_PATH}/calibration/{source_name}",
+            f"{RESULTS_PATH}/native-inspection/{run_name}",
+            HF_CACHE_PATH,
+        )
+    finally:
+        results_volume.commit()
+        model_cache.commit()
+        kernel_cache.commit()
+
+
 @app.local_entrypoint()
 def main(
     loss: str = "imitation",
