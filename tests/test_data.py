@@ -20,3 +20,23 @@ def test_privileged_answer_never_enters_student_prompt():
     )
     assert "7391" not in student
     assert "7391" in teacher
+
+
+def test_custom_instruction_is_shared_and_mode_is_forwarded():
+    modes = []
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            modes.append(kwargs["enable_thinking"])
+            return messages[0]["content"]
+
+    student, teacher = prompts(
+        Tokenizer(),
+        Example("id", "Compute the secret", "7391"),
+        False,
+        instruction="Use one concise derivation.",
+    )
+    assert "Use one concise derivation." in student
+    assert "Use one concise derivation." in teacher
+    assert "7391" not in student and "7391" in teacher
+    assert modes == [False, False]

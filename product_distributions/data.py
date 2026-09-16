@@ -70,8 +70,9 @@ def verify_answer(text: str, answer: str) -> dict:
         return {"reward": 0.0, "status": "verifier_error", "error": str(error)}
 
 
-def prompts(tokenizer, example: Example, enable_thinking: bool):
-    instruction = "Solve the problem. Explain your reasoning and put your final answer in \\boxed{}."
+def prompts(tokenizer, example: Example, enable_thinking: bool, *, instruction=None):
+    if instruction is None:
+        instruction = "Solve the problem. Explain your reasoning and put your final answer in \\boxed{}."
     student_content = f"{example.question}\n\n{instruction}"
     teacher_content = (
         student_content

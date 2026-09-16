@@ -124,3 +124,16 @@ def test_recorded_logprobs_are_full_support_sampling_probabilities():
     assert result.student_logprobs == [0.0, 0.0]
     assert result.teacher_logprobs == [0.0, 0.0]
     assert result.behavior_logprobs == [0.0, 0.0]
+
+
+def test_explicit_extra_stop_token():
+    model = FakeModel(preferred_token=2)
+    result = ProductSampler(model, FakeTokenizer()).generate(
+        "student",
+        "teacher",
+        config=SamplingConfig(
+            top_k=None, top_p=None, max_new_tokens=3, extra_eos_token_ids=(2,)
+        ),
+    )[0]
+    assert result.token_ids == [2]
+    assert model.calls == 1

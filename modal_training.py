@@ -129,6 +129,28 @@ def inspect_native_generation(
         kernel_cache.commit()
 
 
+@app.function(
+    image=training_image, cpu=8, memory=131072, timeout=3600, volumes=volume_mounts
+)
+def calibrate_short_reasoning(run_name: str):
+    from pathlib import Path
+
+    from product_distributions.short_reasoning import run_short_reasoning
+
+    if Path(run_name).name != run_name:
+        raise ValueError("Run name must be a single path component")
+    try:
+        return run_short_reasoning(
+            f"{RESULTS_PATH}/short-reasoning/{run_name}",
+            f"{RESULTS_PATH}/data/deepmath-v1",
+            HF_CACHE_PATH,
+        )
+    finally:
+        results_volume.commit()
+        model_cache.commit()
+        kernel_cache.commit()
+
+
 @app.local_entrypoint()
 def main(
     loss: str = "imitation",

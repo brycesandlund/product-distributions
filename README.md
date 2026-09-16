@@ -184,6 +184,18 @@ The follow-up [native generation inspection](NATIVE_INSPECTION_REPORT.md)
 contains full-transcript locations and results from the same prompts through
 Transformers `model.generate()`; all four native responses also reached 4K.
 
+The deployed `calibrate_short_reasoning` function provides an additional bounded,
+inference-only screen: two fixed DeepMath training questions and two GSM8K training
+questions, concise instructions, non-thinking student/product rollouts at a 2K cap,
+and thinking product rollouts at an 8K cap. It pins dataset/model revisions and
+saves full prompts, raw responses, EOS status, and verifier scores, including
+scores at actual 2K/4K prefixes of the 8K trajectories. The experiment recognizes
+both model-config and tokenizer EOS markers via an explicit sampling option.
+Default training prompts, thinking mode, and stopping behavior are unchanged.
+See [SHORT_REASONING_REPORT.md](SHORT_REASONING_REPORT.md): concise thinking-off
+completed all four screening questions correctly in 68–1,149 tokens, while
+thinking-on averaged 7,080 tokens and only completed two of four.
+
 For training hardware smoke tests:
 
 ```bash

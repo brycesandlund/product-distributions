@@ -23,6 +23,7 @@ class SamplingConfig:
     seed: int | None = None
     compute_diagnostics: bool = False
     record_logprobs: bool = False
+    extra_eos_token_ids: tuple[int, ...] = ()
 
     def validate(self) -> None:
         if not 0.0 <= self.teacher_weight <= 1.0:
@@ -300,6 +301,7 @@ class ProductSampler:
         recorded_teacher: list[torch.Tensor] = []
         recorded_behavior: list[torch.Tensor] = []
         eos_ids = _eos_ids(self.student_tokenizer, self.teacher_tokenizer)
+        eos_ids.update(config.extra_eos_token_ids)
         eos_tensor = torch.tensor(sorted(eos_ids), device=student_device)
         fallback_token_id = self.student_tokenizer.pad_token_id
         if fallback_token_id is None:
