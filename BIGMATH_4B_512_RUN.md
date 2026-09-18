@@ -47,3 +47,24 @@ baseline results must be retained. The same seed is not a guarantee of
 bit-identical GPU generation. This is a single-seed learning experiment, not
 a robust multi-seed claim or a non-math retention evaluation. Hardware timings
 suggest day-scale runtime; the account usage limit may interrupt the run.
+
+## Recovery update — 2026-09-18
+
+A recorded updates through 209 but its invocation failed with `FileExistsError`
+for the existing segment-256 directory. The last complete checkpoint was 192.
+B completed 512; its files are unchanged by recovery work.
+
+The runner now scans its run directory for compatible checkpoints with adapter,
+optimizer, RNG and metadata files present. Hidden/incomplete saves are ignored.
+Each invocation writes to a unique attempt directory, retaining prior partial
+metrics rather than overwriting them. Checkpoints are published by directory
+rename after the complete save; JSON files use temporary-file replacement.
+Status records expose the current call and errors. This makes interrupted
+serial invocations restartable; it is not a distributed lock for deliberately
+launching duplicate runs concurrently.
+
+32 tests pass, including partial checkpoint rejection, configuration mismatch,
+recovery from an in-segment checkpoint, unique output paths, and the total-step
+ceiling. A was resubmitted from checkpoint 192 with unchanged settings under
+call `fc-01M2TZHD8G035AHP6TDW2E2TSW`. Steps 193–209 must be replayed; the older
+partial metrics are retained and must not be counted twice in analysis.

@@ -97,7 +97,11 @@ def completion_logits(model, tokenizer, prompt, token_ids):
 
 
 def write_json(path, value):
-    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False))
+    from uuid import uuid4
+    path = Path(path)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temporary.write_text(json.dumps(value, indent=2, allow_nan=False))
+    temporary.replace(path)
 
 
 class Trainer:
@@ -221,6 +225,11 @@ class Trainer:
         self.accelerator.register_load_state_pre_hook(load_hook)
 
     def checkpoint(self, directory: Path):
+        from uuid import uuid4
+        destination = directory
+        if destination.exists():
+            raise FileExistsError(destination)
+        directory = destination.with_name(f".{destination.name}.incomplete-{uuid4().hex}")
         directory.mkdir(parents=True, exist_ok=False)
         self.accelerator.save_state(str(directory))
         self.tokenizer.save_pretrained(directory / "tokenizer")
@@ -233,7 +242,8 @@ class Trainer:
                 "data_fingerprint": self.data_fingerprint,
             },
         )
-        return str(directory)
+        directory.rename(destination)
+        return str(destination)
 
     def resume(self, directory: str):
         state = json.loads((Path(directory) / "state.json").read_text())

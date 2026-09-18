@@ -232,6 +232,7 @@ def train_small_ab_segment(config: dict, run_name: str, data_name: str, resume: 
     import json
     from pathlib import Path
     from product_distributions.training import run_training, write_json
+    from product_distributions.recovery import recovery_plan
 
     for name in (run_name, data_name):
         if Path(name).name != name:
@@ -239,14 +240,25 @@ def train_small_ab_segment(config: dict, run_name: str, data_name: str, resume: 
     total = config["steps"]
     if not 1 <= total <= 512 or config["model_id"] != "Qwen/Qwen3.5-4B":
         raise ValueError("This runner is bounded to 512 steps of the 4B model")
-    previous = json.loads((Path(resume) / "state.json").read_text())["step"] if resume else 0
-    if previous >= total:
-        raise ValueError("Requested training is already complete")
-    target = min(previous + 64, total)
+    results_volume.reload()
     root = Path(RESULTS_PATH) / "runs" / run_name
+    plan = recovery_plan(root, config, resume)
+    previous, target, resume = plan["previous"], plan["target"], plan["resume"]
+    if previous >= total:
+        result = {"completed_steps": previous, "total_steps": total, "checkpoint": resume, "status": "already_complete"}
+        write_json(root / "progress.json", result)
+        results_volume.commit()
+        return result
+    root.mkdir(parents=True, exist_ok=True)
+    running = {"completed_steps": previous, "total_steps": total,
+               "target_step": target, "checkpoint": resume,
+               "output_dir": plan["output_dir"], "status": "running",
+               "next_call_id": modal.current_function_call_id()}
+    write_json(root / "progress.json", running)
+    results_volume.commit()
     try:
         result = run_training(
-            {**config, "steps": target}, str(root / f"segment-{target:06d}"),
+            {**config, "steps": target}, plan["output_dir"],
             f"{RESULTS_PATH}/data/{data_name}", HF_CACHE_PATH,
             resume=resume, commit=results_volume.commit, evaluate_before=resume is None,
         )
@@ -259,6 +271,10 @@ def train_small_ab_segment(config: dict, run_name: str, data_name: str, resume: 
             result["next_call_id"] = child.object_id
             write_json(root / "progress.json", {"completed_steps": target, "total_steps": total, **result})
         return result
+    except Exception as error:
+        write_json(root / "progress.json", {**running, "status": "failed",
+                   "error_type": type(error).__name__, "error": str(error)})
+        raise
     finally:
         results_volume.commit()
         model_cache.commit()
