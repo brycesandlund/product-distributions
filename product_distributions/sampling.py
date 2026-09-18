@@ -23,6 +23,7 @@ class SamplingConfig:
     seed: int | None = None
     compute_diagnostics: bool = False
     record_logprobs: bool = False
+    require_teacher_logprobs: bool = False
     extra_eos_token_ids: tuple[int, ...] = ()
 
     def validate(self) -> None:
@@ -252,7 +253,8 @@ class ProductSampler:
             )
 
         student_device = _model_device(self.student_model)
-        teacher_device = _model_device(self.teacher_model)
+        student_only = config.teacher_weight == 0 and not config.compute_diagnostics and not config.require_teacher_logprobs
+        teacher_device = student_device if student_only else _model_device(self.teacher_model)
         batch_size = len(student_prompts)
         generator = None
         if config.seed is not None:
@@ -261,7 +263,12 @@ class ProductSampler:
         _sync_devices(student_device, teacher_device)
         started_at = perf_counter()
 
-        if self.shared_model:
+        if student_only:
+            student_state = _forward(
+                self.student_model,
+                **_tokenize(self.student_tokenizer, student_prompts, student_device),
+            )
+        elif self.shared_model:
             encoded = _tokenize(
                 self.student_tokenizer,
                 student_prompts + teacher_prompts,
@@ -300,7 +307,7 @@ class ProductSampler:
         recorded_student: list[torch.Tensor] = []
         recorded_teacher: list[torch.Tensor] = []
         recorded_behavior: list[torch.Tensor] = []
-        eos_ids = _eos_ids(self.student_tokenizer, self.teacher_tokenizer)
+        eos_ids = _eos_ids(self.student_tokenizer, self.student_tokenizer if student_only else self.teacher_tokenizer)
         eos_ids.update(config.extra_eos_token_ids)
         eos_tensor = torch.tensor(sorted(eos_ids), device=student_device)
         fallback_token_id = self.student_tokenizer.pad_token_id
@@ -310,10 +317,10 @@ class ProductSampler:
         for step in range(config.max_new_tokens):
             was_active = ~finished
             student_logits = student_state.next_logits.to(student_device).float()
-            teacher_logits = teacher_state.next_logits.to(
+            teacher_logits = None if student_only else teacher_state.next_logits.to(
                 student_device, non_blocking=True
             ).float()
-            behavior_logits = (
+            behavior_logits = student_logits / config.temperature if student_only else (
                 (1.0 - config.teacher_weight) * student_logits
                 + config.teacher_weight * teacher_logits
             ) / config.temperature
@@ -335,10 +342,11 @@ class ProductSampler:
                     student_logits.gather(-1, index).squeeze(-1)
                     - student_logits.logsumexp(-1)
                 )
-                recorded_teacher.append(
-                    teacher_logits.gather(-1, index).squeeze(-1)
-                    - teacher_logits.logsumexp(-1)
-                )
+                if teacher_logits is not None:
+                    recorded_teacher.append(
+                        teacher_logits.gather(-1, index).squeeze(-1)
+                        - teacher_logits.logsumexp(-1)
+                    )
                 recorded_behavior.append(sampled_logprobs)
             behavior_logprob_sums += sampled_logprobs * was_active
             lengths += was_active
@@ -355,7 +363,9 @@ class ProductSampler:
             if bool(finished.all().item()) or step + 1 == config.max_new_tokens:
                 break
 
-            if self.shared_model:
+            if student_only:
+                student_state = _advance(self.student_model, student_state, sampled_ids, was_active)
+            elif self.shared_model:
                 active_pair = torch.cat((was_active, was_active))
                 token_pair = torch.cat((sampled_ids, sampled_ids))
                 shared_state = _advance(

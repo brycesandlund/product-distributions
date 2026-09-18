@@ -50,3 +50,34 @@ def test_resume_rejects_old_imitation_weight_semantics(tmp_path):
     trainer.config = TrainConfig(loss="imitation")
     with pytest.raises(ValueError, match="old weight semantics"):
         trainer.resume(str(tmp_path))
+
+
+def test_evaluation_uses_only_student_prompts_and_bounded_batches(monkeypatch):
+    from product_distributions.data import Example
+    import product_distributions.training as training
+
+    calls = []
+
+    class Sampler:
+        def __init__(self, *args):
+            pass
+
+        def generate(self, student, teacher, config):
+            assert student == teacher
+            assert all("secret" not in p for p in student)
+            assert config.extra_eos_token_ids == (99,)
+            calls.append(len(student))
+            return [SimpleNamespace(text="answer", token_ids=[99], num_generated_tokens=1) for _ in student]
+
+    monkeypatch.setattr(training, "ProductSampler", Sampler)
+    monkeypatch.setattr(training, "verify_answer", lambda *args: {"reward": 1.0})
+    trainer = object.__new__(Trainer)
+    trainer.config = TrainConfig(eval_batch_size=2, extra_eos_token_ids=[99])
+    trainer.step = 0
+    trainer.model = SimpleNamespace(eval=lambda: None)
+    trainer.tokenizer = SimpleNamespace(eos_token_id=98)
+    trainer._prompts = lambda e: (e.question, e.question + "secret")
+    result = trainer.evaluate([Example(str(i), "question", "secret") for i in range(3)])
+    assert calls == [2, 1]
+    assert result["accuracy"] == 1
+    assert all(row["ended_with_eos"] for row in result["records"])

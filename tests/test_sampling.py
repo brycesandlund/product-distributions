@@ -137,3 +137,33 @@ def test_explicit_extra_stop_token():
     )[0]
     assert result.token_ids == [2]
     assert model.calls == 1
+
+
+def test_alpha_zero_never_evaluates_separate_teacher():
+    student, teacher = FakeModel(2), FakeModel(3)
+    result = ProductSampler(student, FakeTokenizer(), teacher, FakeTokenizer()).generate(
+        "student", "teacher", config=SamplingConfig(teacher_weight=0, record_logprobs=True, max_new_tokens=3)
+    )[0]
+    assert teacher.calls == 0
+    assert result.token_ids == [2, 7]
+    assert result.teacher_logprobs is None
+    assert result.student_logprobs == result.behavior_logprobs
+
+
+def test_alpha_zero_shared_model_only_batches_student_contexts():
+    class CheckedModel(FakeModel):
+        def forward(self, input_ids, **kwargs):
+            assert input_ids.shape[0] == 2
+            return super().forward(input_ids, **kwargs)
+    ProductSampler(CheckedModel(2), FakeTokenizer()).generate(
+        ["student", "student"], ["teacher", "teacher"], config=config(0)
+    )
+
+
+def test_alpha_zero_opd_can_explicitly_request_teacher_scores():
+    student, teacher = FakeModel(2), FakeModel(3)
+    result = ProductSampler(student, FakeTokenizer(), teacher, FakeTokenizer()).generate(
+        "student", "teacher", config=SamplingConfig(teacher_weight=0, record_logprobs=True, require_teacher_logprobs=True, max_new_tokens=3)
+    )[0]
+    assert teacher.calls == 2
+    assert result.teacher_logprobs is not None

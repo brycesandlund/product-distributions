@@ -41,6 +41,9 @@ class TrainConfig:
     enable_thinking: bool = True
     eval_every: int = 5
     checkpoint_every: int = 5
+    instruction: str | None = None
+    extra_eos_token_ids: tuple[int, ...] = ()
+    eval_batch_size: int = 1
 
     def validate(self):
         if self.loss not in {"imitation", "opd", "opd_full"}:
@@ -56,6 +59,7 @@ class TrainConfig:
             "lora_rank",
             "eval_every",
             "checkpoint_every",
+            "eval_batch_size",
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
@@ -240,7 +244,9 @@ class Trainer:
             raise ValueError(
                 "Cannot resume imitation checkpoint with old weight semantics"
             )
-        old, new = dict(state["config"]), asdict(self.config)
+        old, new = asdict(TrainConfig(**state["config"])), asdict(self.config)
+        for values in (old, new):
+            values["extra_eos_token_ids"] = list(values["extra_eos_token_ids"])
         old.pop("steps")
         new.pop("steps")
         if old != new:
@@ -251,9 +257,9 @@ class Trainer:
         self.step = state["step"]
 
     def _prompts(self, example):
-        student, _ = prompts(self.tokenizer, example, self.config.enable_thinking)
+        student, _ = prompts(self.tokenizer, example, self.config.enable_thinking, instruction=self.config.instruction)
         _, teacher = prompts(
-            self.teacher_tokenizer, example, self.config.enable_thinking
+            self.teacher_tokenizer, example, self.config.enable_thinking, instruction=self.config.instruction
         )
         for tokenizer, prompt in (
             (self.tokenizer, student),
@@ -287,6 +293,8 @@ class Trainer:
                 max_new_tokens=config.max_new_tokens,
                 seed=config.seed + self.step,
                 record_logprobs=True,
+                require_teacher_logprobs=config.loss == "opd",
+                extra_eos_token_ids=tuple(config.extra_eos_token_ids),
             ),
         )
         rollout_seconds = perf_counter() - start
@@ -400,7 +408,7 @@ class Trainer:
             "peak_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
             "generated_tokens": sum(r.num_generated_tokens for r in results),
             "truncated_fraction": sum(
-                r.token_ids[-1] != self.tokenizer.eos_token_id for r in results
+                r.token_ids[-1] not in {self.tokenizer.eos_token_id, *config.extra_eos_token_ids} for r in results
             )
             / len(results),
         }
@@ -425,16 +433,12 @@ class Trainer:
         self.model.eval()
         sampler = ProductSampler(self.model, self.tokenizer)
         records = []
-        for index, e in enumerate(examples):
-            prompt, _ = prompts(self.tokenizer, e, self.config.enable_thinking)
-            if (
-                len(self.tokenizer.encode(prompt, add_special_tokens=False))
-                > self.config.max_prompt_tokens
-            ):
-                raise ValueError(f"Evaluation prompt {e.id} exceeds max_prompt_tokens")
-            result = sampler.generate(
-                prompt,
-                prompt,
+        for index in range(0, len(examples), self.config.eval_batch_size):
+            batch = examples[index:index + self.config.eval_batch_size]
+            batch_prompts = [self._prompts(e)[0] for e in batch]
+            results = sampler.generate(
+                batch_prompts,
+                batch_prompts,
                 config=SamplingConfig(
                     teacher_weight=0,
                     top_k=None,
@@ -442,14 +446,18 @@ class Trainer:
                     temperature=1,
                     max_new_tokens=self.config.max_new_tokens,
                     seed=self.config.seed + 100000 + index,
+                    extra_eos_token_ids=tuple(self.config.extra_eos_token_ids),
                 ),
-            )[0]
-            records.append(
+            )
+            records.extend(
                 {
                     "example_id": e.id,
                     "text": result.text,
+                    "num_generated_tokens": result.num_generated_tokens,
+                    "ended_with_eos": result.token_ids[-1] in {self.tokenizer.eos_token_id, *self.config.extra_eos_token_ids},
                     **verify_answer(result.text, e.answer),
                 }
+                for e, result in zip(batch, results, strict=True)
             )
         return {
             "step": self.step,
@@ -480,7 +488,8 @@ class Trainer:
 
 
 def run_training(
-    config, output_dir, data_dir, cache_dir, resume=None, retention_path=None
+    config, output_dir, data_dir, cache_dir, resume=None, retention_path=None, commit=None,
+    evaluate_before=True,
 ):
     config = TrainConfig(**config)
     config.validate()
@@ -538,7 +547,10 @@ def run_training(
     if resume:
         trainer.resume(resume)
     retention = read_examples(retention_path) if retention_path else None
-    write_json(root / "eval-before.json", trainer.evaluate(evaluation))
+    if evaluate_before:
+        write_json(root / "eval-before.json", trainer.evaluate(evaluation))
+    if commit:
+        commit()
     if retention:
         write_json(root / "retention-before.json", trainer.evaluate(retention))
     while trainer.step < config.steps:
@@ -557,6 +569,8 @@ def run_training(
             )
         if trainer.step % config.checkpoint_every == 0 or trainer.step == config.steps:
             checkpoint = trainer.checkpoint(root / f"checkpoint-{trainer.step:06d}")
+        if commit:
+            commit()
     if retention:
         write_json(root / "retention-after.json", trainer.evaluate(retention))
     if trainer.step == config.steps and "checkpoint" not in locals():
