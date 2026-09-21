@@ -20,3 +20,18 @@ Reports and full rollouts: `/hardware-benchmarks/4b-student-9b-teacher-l40s-2026
 on `product-distributions-results`. Report includes timings, allocated/reserved
 GPU memory, host peak RAM, prompts, rewards and update diagnostics.
 Local verification: 33 tests passed, including question-only teacher isolation.
+
+## Packaging fix and retry — 2026-09-20
+
+The original call failed during container import because `modal_training` was
+not mounted in the benchmark image; it produced no benchmark results. That
+pending call was cancelled. The benchmark image now explicitly includes
+`modal_training`, and the remote CPU `check_imports` function confirmed the
+module imports from `/root/modal_training.py` before the GPU retry was launched.
+All 33 local tests passed again.
+
+Only the unchanged three-update benchmark was resubmitted, as
+`4b-student-9b-teacher-l40s-20260920-retry`, call
+`fc-01M30PX9EGEPG28RX8VGMNY1ZF`. It now writes a loading-models status before
+initialization so container startup can be distinguished from model readiness.
+The training app and A/B jobs were not relaunched or redeployed.

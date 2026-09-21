@@ -6,8 +6,19 @@ from modal_app import HF_CACHE_PATH, RESULTS_PATH, volume_mounts, results_volume
 
 app = modal.App("product-distributions-teacher-benchmark")
 
+# The entry point imports this module at container startup, not just locally.
+benchmark_image = training_image.add_local_python_source("modal_training")
 
-@app.function(image=training_image, gpu="L40S", cpu=4, memory=65536,
+
+@app.function(image=benchmark_image, cpu=1, memory=4096, timeout=120)
+def check_imports():
+    import modal_training
+    from product_distributions.training import TrainConfig, Trainer
+    return {"status": "ok", "modal_training": modal_training.__file__,
+            "question_only_supported": not TrainConfig(teacher_privileged=False).teacher_privileged}
+
+
+@app.function(image=benchmark_image, gpu="L40S", cpu=4, memory=65536,
               timeout=3600, volumes=volume_mounts)
 def benchmark(run_name: str):
     import json
@@ -34,6 +45,8 @@ def benchmark(run_name: str):
     )
     report = {"config": asdict(config), "updates": []}
     try:
+        write_json(output / "summary.json", {**report, "status": "loading_models"})
+        results_volume.commit()
         trainer = Trainer(config, HF_CACHE_PATH)
         assert not any(p.requires_grad for p in trainer.teacher.parameters())
         teacher_versions = [p._version for p in trainer.teacher.parameters()]
