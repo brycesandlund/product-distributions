@@ -26,6 +26,7 @@ class TrainConfig:
     teacher_model_id: str | None = None
     model_revision: str | None = None
     teacher_revision: str | None = None
+    teacher_privileged: bool = True
     loss: str = "imitation"
     alpha: float = 0.5
     beta: float = 0.5
@@ -268,9 +269,10 @@ class Trainer:
 
     def _prompts(self, example):
         student, _ = prompts(self.tokenizer, example, self.config.enable_thinking, instruction=self.config.instruction)
-        _, teacher = prompts(
+        teacher_pair = prompts(
             self.teacher_tokenizer, example, self.config.enable_thinking, instruction=self.config.instruction
         )
+        teacher = teacher_pair[1 if self.config.teacher_privileged else 0]
         for tokenizer, prompt in (
             (self.tokenizer, student),
             (self.teacher_tokenizer, teacher),

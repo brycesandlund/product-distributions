@@ -42,6 +42,26 @@ def test_config_rejects_invalid_sampling_and_loss():
             TrainConfig(**override).validate()
 
 
+def test_question_only_teacher_does_not_receive_gold_answer():
+    from product_distributions.data import Example
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            return messages[0]["content"]
+
+        def encode(self, text, **kwargs):
+            return list(range(len(text)))
+
+    trainer = object.__new__(Trainer)
+    trainer.config = TrainConfig(teacher_privileged=False, enable_thinking=False)
+    trainer.tokenizer = trainer.teacher_tokenizer = Tokenizer()
+    student, teacher = trainer._prompts(Example("id", "A question", "SECRET_GOLD"))
+    assert student == teacher
+    assert "SECRET_GOLD" not in teacher
+    trainer.config.teacher_privileged = True
+    assert "SECRET_GOLD" in trainer._prompts(Example("id", "A question", "SECRET_GOLD"))[1]
+
+
 def test_resume_rejects_old_imitation_weight_semantics(tmp_path):
     import pytest
 
