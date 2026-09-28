@@ -45,7 +45,8 @@ def opd_loss(
     return -(advantage * current_logp).sum() / denominator
 
 
-def full_vocab_opd_loss(student_logits, teacher_logits, alpha: float, denominator: int):
+def full_vocab_opd_loss(student_logits, teacher_logits, alpha: float, denominator: int,
+                       pointwise_clip: float | None = None):
     """Exact action KL(product || teacher) at the sampled, fixed prefixes.
 
     Differentiate both product probabilities and their log probabilities; only
@@ -57,7 +58,13 @@ def full_vocab_opd_loss(student_logits, teacher_logits, alpha: float, denominato
         teacher = teacher.detach().float()
         product_logp = ((1 - alpha) * student.float() + alpha * teacher).log_softmax(-1)
         teacher_logp = teacher.log_softmax(-1)
-        return (product_logp.exp() * (product_logp - teacher_logp)).sum()
+        contributions = product_logp.exp() * (product_logp - teacher_logp)
+        # OPSD released implementation caps each position/vocabulary entry,
+        # before vocabulary reduction. Signed negative entries are unchanged.
+        # The resulting clipped surrogate need not be a nonnegative divergence.
+        if pointwise_clip is not None:
+            contributions = contributions.clamp(max=pointwise_clip)
+        return contributions.sum()
 
     student = student_logits.reshape(-1, student_logits.shape[-1])
     teacher = teacher_logits.detach().reshape(-1, teacher_logits.shape[-1])

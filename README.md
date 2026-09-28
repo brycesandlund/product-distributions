@@ -136,6 +136,13 @@ Full-vocabulary OPD avoids sampled-action gradient variance, not prefix sampling
 variance, and uses additional training memory. Use `configs/opd_full.json` or
 `configs/opd_full_teacher27b_smoke.json` to select it.
 
+Optional `opd_pointwise_clip` (positive finite number; default `null`) upper-caps
+each position/vocabulary-entry reverse-KL contribution before reduction, following
+OPSD's released implementation. It is only valid for `opd_full`; it does not
+clip summed token KL or gradients. Signed negative entries are unchanged, so
+the clipped surrogate can be negative. See `OPSD_CLIPPING_NOTES.md` for teacher
+handling, thresholds, and differences from the paper's released configurations.
+
 Data preparation pins a DeepMath revision and takes a small deterministic subset
 after a question-hash train/eval split. It uses only questions and final answers,
 not provided reasoning traces. Math-Verify checks the final boxed answer with

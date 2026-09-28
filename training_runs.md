@@ -47,6 +47,13 @@ Artifacts including the checkpoint are downloaded to
 `artifacts/opd-stopped-20260928/bigmath-4b-opd-512-20260928/`.
 See `OPD_512_RUN.md` for stop details and original configuration.
 
+Follow-up diagnostics (`TEACHER_DRIFT_DIAGNOSIS.md`) found that the privileged
+teacher also fails on three selected easy questions at step 32: both contexts
+go from 3/3 correct initially to 0/3 within a 512-token diagnostic budget.
+Student/teacher KL decreases on identical failed prefixes despite this shared
+degradation. This supports investigating moving-teacher instability but does
+not identify the initiating cause or rule out implementation issues.
+
 Ordinary RL improved the 4B student's held-out math accuracy. Product rollouts
 using the same model with a privileged answer initially improved accuracy, then
 collapsed into short, mostly incorrect answer-only responses. Replacing that

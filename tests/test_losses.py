@@ -10,6 +10,33 @@ from product_distributions.losses import (
 )
 
 
+@pytest.mark.parametrize("alpha", [0.0, 0.5, 1.0])
+@pytest.mark.parametrize("cap", [1e-6, 0.05])
+def test_pointwise_clip_matches_opsd_elementwise_reference(alpha, cap):
+    torch.manual_seed(11)
+    s = torch.randn(137, 13, requires_grad=True)
+    q = torch.randn_like(s, requires_grad=True)
+    logp = ((1-alpha)*s + alpha*q.detach()).log_softmax(-1)
+    logq = q.detach().log_softmax(-1)
+    entries = torch.nn.functional.kl_div(logq, logp, reduction="none", log_target=True)
+    expected = entries.clamp(max=cap).sum()/2048
+    expected_grad = torch.autograd.grad(expected, s)[0]
+    actual = full_vocab_opd_loss(s,q,alpha,2048,pointwise_clip=cap)
+    actual.backward()
+    assert torch.allclose(actual,expected,atol=1e-7)
+    assert torch.allclose(s.grad,expected_grad,atol=1e-7)
+    assert q.grad is None
+
+
+def test_large_pointwise_cap_preserves_unclipped_loss_and_gradient():
+    s=torch.tensor([[0.2,-0.4,0.8]],requires_grad=True)
+    q=torch.tensor([[0.7,-0.8,0.3]])
+    a=full_vocab_opd_loss(s,q,0,1)
+    b=full_vocab_opd_loss(s,q,0,1,pointwise_clip=100)
+    assert torch.equal(a,b)
+    assert torch.equal(torch.autograd.grad(a,s)[0],torch.autograd.grad(b,s)[0])
+
+
 def test_weight_endpoints_and_independent_scale():
     rewards = torch.tensor([0.0, 1.0, 1.0, 1.0])
     assert torch.equal(

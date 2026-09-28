@@ -31,6 +31,7 @@ class TrainConfig:
     alpha: float = 0.5
     beta: float = 0.5
     reward_scale: float | None = None
+    opd_pointwise_clip: float | None = None
     steps: int = 10
     prompts_per_step: int = 1
     group_size: int = 4
@@ -70,6 +71,11 @@ class TrainConfig:
             raise ValueError("learning_rate must be finite and positive")
         if self.reward_scale is not None and not math.isfinite(self.reward_scale):
             raise ValueError("reward_scale must be finite")
+        if self.opd_pointwise_clip is not None:
+            if self.loss != "opd_full":
+                raise ValueError("opd_pointwise_clip requires opd_full")
+            if not math.isfinite(self.opd_pointwise_clip) or self.opd_pointwise_clip <= 0:
+                raise ValueError("opd_pointwise_clip must be finite and positive")
 
 
 def enable_qwen_kernels():
@@ -366,7 +372,8 @@ class Trainer:
                 loss = imitation_loss(logp, weights[index], denominator)
             elif config.loss == "opd_full":
                 loss = full_vocab_opd_loss(
-                    logits, teacher_logits, config.alpha, denominator
+                    logits, teacher_logits, config.alpha, denominator,
+                    pointwise_clip=config.opd_pointwise_clip,
                 )
             else:
                 loss = opd_loss(

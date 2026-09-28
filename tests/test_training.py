@@ -51,6 +51,17 @@ def test_distillation_accepts_independent_questions():
             TrainConfig(loss=loss, group_size=0).validate()
 
 
+def test_pointwise_clip_validation():
+    import pytest
+    TrainConfig(loss="opd_full",opd_pointwise_clip=0.05).validate()
+    for value in (0,-1,float("inf"),float("nan")):
+        with pytest.raises(ValueError,match="opd_pointwise_clip"):
+            TrainConfig(loss="opd_full",opd_pointwise_clip=value).validate()
+    for loss in ("imitation","opd"):
+        with pytest.raises(ValueError,match="requires opd_full"):
+            TrainConfig(loss=loss,opd_pointwise_clip=0.05).validate()
+
+
 def test_question_only_teacher_does_not_receive_gold_answer():
     from product_distributions.data import Example
 
