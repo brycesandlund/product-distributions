@@ -3,6 +3,10 @@
 Date: 2026-09-28. Only data preparation and the short pilot are authorized;
 the 512-step experiment has not been launched.
 
+Subsequent update: the user authorized launch after this preflight completed.
+The full run is now submitted; see `OPD_512_RUN.md`. Statements below about
+not launching describe the preflight stage only.
+
 ## Planned experiment
 
 Configuration: `configs/opd_4b_privileged_512.json`. Fresh Qwen3.5-4B rank-16

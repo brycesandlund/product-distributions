@@ -27,6 +27,26 @@ remote file inventory and local byte-size verification. Within a run:
 
 ## Main result
 
+September 28 run `bigmath-4b-opd-512-20260928` was **stopped early for collapse**.
+Ordinary full-vocabulary OPD with a privileged 4B self-teacher (alpha=0), A10,
+16 distinct questions per update, 8,192-question pool, planned 512 updates:
+
+| Update | Cumulative generated training tokens | Held-out accuracy | Mean eval tokens |
+| ---: | ---: | ---: | ---: |
+| 0 | 0 | 63.28% (162/256) | 876.07 |
+| 32 | 427,160 | 0.78% (2/256) | 1,817.67 |
+
+At step 32, 169/256 evaluation responses reached the cap. Inspected samples
+show long generic mathematical prose, unlike B's short answer-only collapse.
+The fixed evaluation question IDs match baseline. This is evidence of failure
+under these settings, not a causal diagnosis or a general verdict on OPD.
+The monitor stopped the dedicated app after 37 committed updates / 579,181
+generated training tokens; the last saved checkpoint is step 32. No step-37
+evaluation exists. These token counts exclude evaluation and the separate pilot.
+Artifacts including the checkpoint are downloaded to
+`artifacts/opd-stopped-20260928/bigmath-4b-opd-512-20260928/`.
+See `OPD_512_RUN.md` for stop details and original configuration.
+
 Ordinary RL improved the 4B student's held-out math accuracy. Product rollouts
 using the same model with a privileged answer initially improved accuracy, then
 collapsed into short, mostly incorrect answer-only responses. Replacing that
@@ -189,7 +209,8 @@ fix a 2K-token OOM. Three updates, 16 distinct questions each, took 172–185
 seconds/update and peaked at 17.02 GiB allocated. Checkpoint reload error was
 zero. The dataset was expanded to 8,192 unique training questions with the
 original holdout unchanged. This is a feasibility test, not a learning result;
-the 512-step OPD run has not been launched. See `OPD_PREFLIGHT.md` for results,
+the subsequent 512-step OPD launch is documented in `OPD_512_RUN.md`.
+See `OPD_PREFLIGHT.md` for results,
 failed-attempt provenance, and artifact locations outside the earlier archive.
 
 Hardware tests use very small repeated prompt sets and disposable adapters.
