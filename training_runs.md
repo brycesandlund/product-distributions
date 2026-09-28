@@ -27,6 +27,12 @@ remote file inventory and local byte-size verification. Within a run:
 
 ## Main result
 
+Follow-up launched September 28: `bigmath-4b-frozen-opd-512-20260928`.
+Matched fresh 4B OPD run with **frozen initial privileged teacher, no clipping**;
+all data, LR, rollout and evaluation settings unchanged. A10 invariance preflight
+passed (teacher logits exactly unchanged after three student updates). No outcome
+yet. Details and monitoring rules: `FROZEN_OPD_RUN.md`.
+
 September 28 run `bigmath-4b-opd-512-20260928` was **stopped early for collapse**.
 Ordinary full-vocabulary OPD with a privileged 4B self-teacher (alpha=0), A10,
 16 distinct questions per update, 8,192-question pool, planned 512 updates:

@@ -5,6 +5,44 @@ import torch
 from product_distributions.training import TrainConfig, Trainer, completion_logits
 
 
+def test_fixed_teacher_validation():
+    import pytest
+    TrainConfig(loss="opd_full", alpha=0, fixed_self_teacher=True).validate()
+    for override in ({"loss": "opd"}, {"alpha": 0.5}, {"teacher_model_id": "other"}):
+        values = dict(loss="opd_full", alpha=0, fixed_self_teacher=True)
+        values.update(override)
+        with pytest.raises(ValueError, match="fixed_self_teacher"):
+            TrainConfig(**values).validate()
+
+
+def test_fixed_teacher_restores_adapter(monkeypatch):
+    from contextlib import contextmanager
+    import product_distributions.training as training
+    class Model:
+        enabled = True
+        def eval(self): pass
+        @contextmanager
+        def disable_adapter(self):
+            self.enabled = False
+            try:
+                yield
+            finally:
+                self.enabled = True
+    model = Model()
+    trainer = object.__new__(Trainer)
+    trainer.model = trainer.teacher = model
+    trainer.teacher_tokenizer = None
+    trainer.config = TrainConfig(loss="opd_full", alpha=0, fixed_self_teacher=True)
+    trainer.accelerator = SimpleNamespace(unwrap_model=lambda m: m)
+    def logits(*args):
+        assert not model.enabled
+        assert not torch.is_grad_enabled()
+        return torch.tensor(1.)
+    monkeypatch.setattr(training, "completion_logits", logits)
+    trainer.teacher_completion_logits("prompt", [1])
+    assert model.enabled
+
+
 def test_completion_alignment_excludes_prompt_and_predicts_eos():
     class Tokenizer:
         def encode(self, text, **kwargs):

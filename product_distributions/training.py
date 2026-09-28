@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
@@ -27,6 +28,7 @@ class TrainConfig:
     model_revision: str | None = None
     teacher_revision: str | None = None
     teacher_privileged: bool = True
+    fixed_self_teacher: bool = False
     loss: str = "imitation"
     alpha: float = 0.5
     beta: float = 0.5
@@ -48,6 +50,10 @@ class TrainConfig:
     eval_batch_size: int = 1
 
     def validate(self):
+        if self.fixed_self_teacher and not (
+            self.loss == "opd_full" and self.alpha == 0 and self.teacher_model_id is None
+        ):
+            raise ValueError("fixed_self_teacher currently requires opd_full, alpha=0, and no separate teacher")
         if self.loss not in {"imitation", "opd", "opd_full"}:
             raise ValueError("loss must be imitation, opd, or opd_full")
         if not 0 <= self.alpha <= 1 or not 0 <= self.beta <= 1:
@@ -292,6 +298,16 @@ class Trainer:
                 )
         return student, teacher
 
+    def teacher_completion_logits(self, prompt, token_ids):
+        """Fixed self teacher is the immutable base; only student uses LoRA."""
+        self.teacher.eval()
+        adapter_context = (
+            self.accelerator.unwrap_model(self.model).disable_adapter()
+            if self.config.fixed_self_teacher else nullcontext()
+        )
+        with torch.no_grad(), adapter_context:
+            return completion_logits(self.teacher, self.teacher_tokenizer, prompt, token_ids)
+
     def update(self, examples):
         config = self.config
         pairs = [self._prompts(e) for e in examples for _ in range(config.group_size)]
@@ -352,14 +368,7 @@ class Trainer:
             ids = torch.tensor(result.token_ids, device=self.accelerator.device)
             teacher_logits = None
             if config.loss in {"opd", "opd_full"}:
-                self.teacher.eval()
-                with torch.no_grad():
-                    teacher_logits = completion_logits(
-                        self.teacher,
-                        self.teacher_tokenizer,
-                        teacher_prompt,
-                        result.token_ids,
-                    )
+                teacher_logits = self.teacher_completion_logits(teacher_prompt, result.token_ids)
             self.model.train()
             logits = completion_logits(
                 self.model, self.tokenizer, student_prompt, result.token_ids
