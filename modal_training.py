@@ -228,6 +228,10 @@ def benchmark_small_model(run_name: str, model_revision: str):
     timeout=12 * 3600, volumes=volume_mounts,
 )
 def train_small_ab_segment(config: dict, run_name: str, data_name: str, resume: str | None = None):
+    return run_segment(config, run_name, data_name, resume, train_small_ab_segment)
+
+
+def run_segment(config, run_name, data_name, resume, successor):
     """Bounded 64-step segments, handing off up to the requested total only."""
     import json
     from pathlib import Path
@@ -267,7 +271,7 @@ def train_small_ab_segment(config: dict, run_name: str, data_name: str, resume: 
         model_cache.commit()
         kernel_cache.commit()
         if target < total:
-            child = train_small_ab_segment.spawn(config, run_name, data_name, result["checkpoint"])
+            child = successor.spawn(config, run_name, data_name, result["checkpoint"])
             result["next_call_id"] = child.object_id
             write_json(root / "progress.json", {"completed_steps": target, "total_steps": total, **result})
         return result

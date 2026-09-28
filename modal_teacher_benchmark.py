@@ -15,7 +15,19 @@ def check_imports():
     import modal_training
     from product_distributions.training import TrainConfig, Trainer
     return {"status": "ok", "modal_training": modal_training.__file__,
+            "segment_runner_available": callable(modal_training.run_segment),
             "question_only_supported": not TrainConfig(teacher_privileged=False).teacher_privileged}
+
+
+@app.function(image=benchmark_image, gpu="L40S", cpu=4, memory=65536,
+              timeout=12 * 3600, volumes=volume_mounts)
+def train_teacher_segment(config: dict, run_name: str, data_name: str, resume: str | None = None):
+    from modal_training import run_segment
+    if not 1 <= config["steps"] <= 192:
+        raise ValueError("This experiment is capped at 192 steps")
+    if config.get("teacher_model_id") != "Qwen/Qwen3.5-9B" or config.get("teacher_privileged") is not False:
+        raise ValueError("Expected question-only 9B teacher")
+    return run_segment(config, run_name, data_name, resume, train_teacher_segment)
 
 
 @app.function(image=benchmark_image, gpu="L40S", cpu=4, memory=65536,
