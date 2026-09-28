@@ -111,3 +111,18 @@ def test_imitation_endpoints_and_reward_gradient():
         imitation_loss(sampled_logprobs(fresh, ids), 1, 2),
         torch.nn.functional.cross_entropy(fresh, ids),
     )
+
+
+@pytest.mark.parametrize("alpha", [0.0, 0.5, 1.0])
+def test_chunked_full_opd_matches_unchunked_value_and_gradient(alpha):
+    torch.manual_seed(0)
+    student = torch.randn(2, 137, 17, requires_grad=True)
+    teacher = torch.randn_like(student, requires_grad=True)
+    product = ((1-alpha)*student + alpha*teacher.detach()).log_softmax(-1)
+    expected = (product.exp()*(product-teacher.detach().log_softmax(-1))).sum()/4096
+    gradient = torch.autograd.grad(expected, student)[0]
+    actual = full_vocab_opd_loss(student, teacher, alpha, 4096)
+    actual.backward()
+    assert torch.allclose(actual, expected, atol=1e-7)
+    assert torch.allclose(student.grad, gradient, atol=1e-7)
+    assert teacher.grad is None

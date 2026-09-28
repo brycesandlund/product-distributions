@@ -64,8 +64,8 @@ class TrainConfig:
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
-        if self.group_size < 2:
-            raise ValueError("group_size must be at least two")
+        if self.loss == "imitation" and self.group_size < 2:
+            raise ValueError("group_size must be at least two for imitation")
         if not math.isfinite(self.learning_rate) or self.learning_rate <= 0:
             raise ValueError("learning_rate must be finite and positive")
         if self.reward_scale is not None and not math.isfinite(self.reward_scale):
@@ -329,8 +329,11 @@ class Trainer:
         rewards = torch.tensor(
             [g["reward"] for g in grades], device=self.accelerator.device
         )
-        weights = trajectory_weights(
-            rewards, config.group_size, config.beta, config.reward_scale
+        # Distillation does not use verifier advantages or require sibling rollouts.
+        weights = (
+            trajectory_weights(rewards, config.group_size, config.beta, config.reward_scale)
+            if config.loss == "imitation"
+            else None
         )
         denominator = len(results) * config.max_new_tokens
         self.optimizer.zero_grad(set_to_none=True)

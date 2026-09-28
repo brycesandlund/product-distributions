@@ -42,6 +42,15 @@ def test_config_rejects_invalid_sampling_and_loss():
             TrainConfig(**override).validate()
 
 
+def test_distillation_accepts_independent_questions():
+    import pytest
+
+    for loss in ("opd", "opd_full"):
+        TrainConfig(loss=loss, prompts_per_step=16, group_size=1).validate()
+        with pytest.raises(ValueError, match="group_size must be positive"):
+            TrainConfig(loss=loss, group_size=0).validate()
+
+
 def test_question_only_teacher_does_not_receive_gold_answer():
     from product_distributions.data import Example
 

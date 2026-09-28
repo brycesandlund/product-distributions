@@ -183,6 +183,15 @@ See `CALIBRATION_REPORT.md`, `NATIVE_INSPECTION_REPORT.md`, and
 
 ## Hardware and systems tests
 
+September 28 addition: the 4B privileged self-teacher **ordinary full-vocabulary
+OPD** preflight passed on A10 after chunking/checkpointing KL intermediates to
+fix a 2K-token OOM. Three updates, 16 distinct questions each, took 172–185
+seconds/update and peaked at 17.02 GiB allocated. Checkpoint reload error was
+zero. The dataset was expanded to 8,192 unique training questions with the
+original holdout unchanged. This is a feasibility test, not a learning result;
+the 512-step OPD run has not been launched. See `OPD_PREFLIGHT.md` for results,
+failed-attempt provenance, and artifact locations outside the earlier archive.
+
 Hardware tests use very small repeated prompt sets and disposable adapters.
 They establish execution/memory feasibility, not learning efficacy.
 
