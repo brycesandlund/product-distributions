@@ -1,5 +1,22 @@
 # Frozen question-only 9B teacher: 192-step run
 
+## Authorized continuation — September 29, 2026
+
+User requested another 192 updates from the last checkpoint, targeting 384 total.
+Submitted call `fc-01M3R9GWWKG6B21P2FS23DAZ2A`, same run directory and L40S
+entry point. Config `configs/teacher9b_384.json` changes only total steps.
+Explicit resume: `segment-000192-attempt-b008b86f396f/checkpoint-000192`.
+Adapter, optimizer and RNG are restored, not restarted. Checkpoint compatibility
+validated locally; remote checkpoint exists and prior reload error was zero.
+47 tests pass. Entrypoint ceiling raised to 384; no extension beyond that authorized.
+Next 768 questions (training indices 768–1535), same dataset and held-out set.
+Evaluate at 256, 320, 384; checkpoint every 32; same 64-update successor segments.
+Remote progress confirms running from 192 toward 256, total 384, in
+`segment-000256-attempt-9066c8f31fc8`. No completed new update confirmed yet. No new
+baseline evaluation or diagnostic training run. Historical original launch below.
+
+## Original 192-step launch
+
 Submitted 2026-09-21: `fc-01M32FRHE7ZVBQ4H9AHVF24V2G`.
 Run name: `bigmath-4b-teacher9b-192-20260921`.
 Configuration: `configs/teacher9b_192.json`.

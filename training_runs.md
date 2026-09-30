@@ -43,8 +43,10 @@ its advantage over A at the same step was only two questions out of 256.
 The two subsequent experiments tested ordinary full-vocabulary OPD:
 **D (moving privileged self-teacher)** collapsed by step 32, while **E (frozen
 initial privileged self-teacher)** avoided that early collapse but showed no
-clear learning gain and was stopped by the user after 205 updates. All five
-runs are finished or stopped; none is currently training.
+clear learning gain and was stopped by the user after 205 updates. C completed
+its original 192-update budget; on September 29 the user authorized 192 more
+updates from checkpoint 192 (384 total). That continuation is submitted;
+A, B, D, and E remain finished or stopped.
 
 ### Shared setup
 
@@ -144,7 +146,11 @@ Config: `configs/teacher9b_192.json`.
   `c202236235762e1c871ad0ccb60c8ee5ba337b9a`. Neither context receives the answer.
 - Fresh 4B student; no pilot or hardware-benchmark adapters reused. Same first
   768 training questions as A/B through step 192.
-- Completed all 192 steps and stopped; final checkpoint reload passed.
+- Completed the original 192 steps; checkpoint reload passed. On September 29,
+  continuation to 384 total steps was submitted from checkpoint 192, preserving
+  optimizer/RNG and all hyperparameters. Config: `configs/teacher9b_384.json`.
+  Next 768 training questions, same holdout, evaluations at 256/320/384.
+  Call `fc-01M3R9GWWKG6B21P2FS23DAZ2A`; details in `TEACHER9B_192_RUN.md`.
 - Final gain: **+8.20 percentage points**, 21 additional correct answers.
   No answer-only collapse through this horizon: final mean response length
   884 tokens; 51/256 evaluation responses hit the cap.

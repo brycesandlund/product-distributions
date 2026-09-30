@@ -23,8 +23,8 @@ def check_imports():
               timeout=12 * 3600, volumes=volume_mounts)
 def train_teacher_segment(config: dict, run_name: str, data_name: str, resume: str | None = None):
     from modal_training import run_segment
-    if not 1 <= config["steps"] <= 192:
-        raise ValueError("This experiment is capped at 192 steps")
+    if not 1 <= config["steps"] <= 384:
+        raise ValueError("This experiment is capped at 384 steps")
     if config.get("teacher_model_id") != "Qwen/Qwen3.5-9B" or config.get("teacher_privileged") is not False:
         raise ValueError("Expected question-only 9B teacher")
     return run_segment(config, run_name, data_name, resume, train_teacher_segment)
