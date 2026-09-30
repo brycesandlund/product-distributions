@@ -40,7 +40,8 @@ short answer-only responses. **C (product imitation with a frozen question-only
 9B teacher)** avoided that collapse through 192 updates and reached 70.7%;
 its advantage over A at the same step was only two questions out of 256.
 
-The two subsequent experiments tested ordinary full-vocabulary OPD:
+The two subsequent experiments tested full-vocabulary on-policy self-distillation
+(OPSD), using the same model with privileged answer context as teacher:
 **D (moving privileged self-teacher)** collapsed by step 32, while **E (frozen
 initial privileged self-teacher)** avoided that early collapse but showed no
 clear learning gain and was stopped by the user after 205 updates. C completed
@@ -76,10 +77,10 @@ A, B, D, and E remain finished or stopped.
 
 A: ordinary RL (alpha=0); B: privileged moving-self-teacher product imitation
 (alpha=0.5); C: frozen question-only 9B product imitation (alpha=0.5);
-D/E: privileged-self-teacher OPD (alpha=0), moving/frozen respectively.
+D/E: privileged-self-teacher OPSD (alpha=0), moving/frozen respectively.
 An em dash means no evaluation at that step, not zero accuracy.
 
-| Step | A: RL | B: product, self | C: product, 9B | D: OPD, moving | E: OPD, frozen |
+| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen |
 | ---: | ---: | ---: | ---: | ---: | ---: |
 | 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) |
 | 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) |
@@ -158,14 +159,14 @@ Config: `configs/teacher9b_192.json`.
 - Relative to B, both teacher identity and access to privileged answers change;
   this is not a one-variable ablation. General retention remains unmeasured.
 
-### D: OPD with moving privileged-context self-teacher
+### D: OPSD with moving privileged-context self-teacher
 
 Run: `bigmath-4b-opd-512-20260928`.
 Local archive: `artifacts/opd-stopped-20260928/bigmath-4b-opd-512-20260928/`.
 Config: `configs/opd_4b_privileged_512.json`.
 
 - One A10, 4 CPU cores, 32GB host RAM. Fresh 4B student; teacher shares current
-  weights but receives the verified answer. Full-vocabulary OPD, not B's
+  weights but receives the verified answer. Full-vocabulary OPSD, not B's
   reward-weighted sampled imitation. Planned 512 updates.
 - **Stopped for collapse after 37 committed updates**, 579,181 generated
   training tokens; last checkpoint 32. No step-37 evaluation exists.
@@ -179,7 +180,7 @@ Config: `configs/opd_4b_privileged_512.json`.
 - App stopped and monitor disabled. Token counts exclude evaluations and pilot
   work. See `OPD_512_RUN.md` and `TEACHER_DRIFT_DIAGNOSIS.md`.
 
-### E: OPD with frozen privileged-context self-teacher
+### E: OPSD with frozen privileged-context self-teacher
 
 Run: `bigmath-4b-frozen-opd-512-20260928`.
 Local archive: `artifacts/frozen-opd-stopped-20260929/bigmath-4b-frozen-opd-512-20260928/`.
@@ -196,7 +197,7 @@ Config: `configs/opd_4b_frozen_privileged_512.json`.
   63.28%. Best observed: **64.45% (165/256)** at step 160. Neither establishes
   a clear learning gain. Step-192 mean length was 821.06 tokens; 54 capped.
 - Avoided D's early collapse, but ordinary RL A reached 69.92% at step 192.
-  This is a single-run comparison, not a general verdict on frozen-teacher OPD.
+  This is a single-run comparison, not a general verdict on frozen-teacher OPSD.
 - App confirmed stopped with zero tasks; monitor paused. Checkpoint, optimizer,
   RNG, rollouts and evaluations archived; no post-stop checkpoint reload test.
   See `FROZEN_OPD_RUN.md` for provenance and stop details.
@@ -271,12 +272,12 @@ See `CALIBRATION_REPORT.md`, `NATIVE_INSPECTION_REPORT.md`, and
 ## Hardware and systems tests
 
 September 28 addition: the 4B privileged self-teacher **ordinary full-vocabulary
-OPD** preflight passed on A10 after chunking/checkpointing KL intermediates to
+OPSD** preflight passed on A10 after chunking/checkpointing KL intermediates to
 fix a 2K-token OOM. Three updates, 16 distinct questions each, took 172–185
 seconds/update and peaked at 17.02 GiB allocated. Checkpoint reload error was
 zero. The dataset was expanded to 8,192 unique training questions with the
 original holdout unchanged. This is a feasibility test, not a learning result;
-the subsequent 512-step OPD launch is documented in `OPD_512_RUN.md`.
+the subsequent 512-step OPSD launch is documented in `OPD_512_RUN.md`.
 See `OPD_PREFLIGHT.md` for results,
 failed-attempt provenance, and artifact locations outside the earlier archive.
 
@@ -309,7 +310,7 @@ learning gains. Details and individual run names are in `BUILD_REPORT.md`.
    failure mode under the settings tested.
 3. Frozen question-only 9B guidance is promising through 192 steps but has not
    established a statistically robust or compute-matched advantage over RL.
-4. Moving privileged-self-teacher OPD (D) collapsed rapidly; freezing that teacher
+4. Moving privileged-self-teacher OPSD (D) collapsed rapidly; freezing that teacher
    (E) avoided the same early collapse but produced no clear learning gain through
    the last evaluated checkpoint, step 192.
 5. These experiments do not measure general instruction-following retention,
