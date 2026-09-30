@@ -1,6 +1,6 @@
 # Training runs and experimental results
 
-Snapshot date: 2026-09-28. All reported accuracies below are verifier scores,
+Snapshot date: 2026-09-29. All reported accuracies below are verifier scores,
 not human assessments of derivation quality. No new GPU jobs were launched to
 prepare this overview.
 
@@ -14,7 +14,14 @@ The archive includes data, calibration results, training rollouts, metrics,
 evaluation responses, adapters, optimizer state, and RNG state. It is gitignored;
 this overview and the experiment code/configs are tracked separately.
 
-Paths below are relative to that archive. `download_inventory.json` records the
+Arms D and E were archived separately after stopping:
+
+- D: `artifacts/opd-stopped-20260928/bigmath-4b-opd-512-20260928/`.
+- E: `artifacts/frozen-opd-stopped-20260929/bigmath-4b-frozen-opd-512-20260928/`.
+  Download verified: 286 files / 2,687,178,310 bytes; all local sizes match remote.
+
+Unless an explicit archive is given, paths below are relative to the original
+archive. `download_inventory.json` records the
 remote file inventory and local byte-size verification. Within a run:
 
 - `progress.json`: latest completed segment/checkpoint and, when applicable, next call.
@@ -27,82 +34,72 @@ remote file inventory and local byte-size verification. Within a run:
 
 ## Main result
 
-Follow-up launched September 28: `bigmath-4b-frozen-opd-512-20260928`.
-Matched fresh 4B OPD run with **frozen initial privileged teacher, no clipping**;
-all data, LR, rollout and evaluation settings unchanged. A10 invariance preflight
-passed (teacher logits exactly unchanged after three student updates). No outcome
-yet. Details and monitoring rules: `FROZEN_OPD_RUN.md`.
+**A (ordinary RL)** improved held-out math accuracy. **B (product imitation with
+a moving privileged self-teacher)** initially improved, then collapsed into
+short answer-only responses. **C (product imitation with a frozen question-only
+9B teacher)** avoided that collapse through 192 updates and reached 70.7%;
+its advantage over A at the same step was only two questions out of 256.
 
-September 28 run `bigmath-4b-opd-512-20260928` was **stopped early for collapse**.
-Ordinary full-vocabulary OPD with a privileged 4B self-teacher (alpha=0), A10,
-16 distinct questions per update, 8,192-question pool, planned 512 updates:
-
-| Update | Cumulative generated training tokens | Held-out accuracy | Mean eval tokens |
-| ---: | ---: | ---: | ---: |
-| 0 | 0 | 63.28% (162/256) | 876.07 |
-| 32 | 427,160 | 0.78% (2/256) | 1,817.67 |
-
-At step 32, 169/256 evaluation responses reached the cap. Inspected samples
-show long generic mathematical prose, unlike B's short answer-only collapse.
-The fixed evaluation question IDs match baseline. This is evidence of failure
-under these settings, not a causal diagnosis or a general verdict on OPD.
-The monitor stopped the dedicated app after 37 committed updates / 579,181
-generated training tokens; the last saved checkpoint is step 32. No step-37
-evaluation exists. These token counts exclude evaluation and the separate pilot.
-Artifacts including the checkpoint are downloaded to
-`artifacts/opd-stopped-20260928/bigmath-4b-opd-512-20260928/`.
-See `OPD_512_RUN.md` for stop details and original configuration.
-
-Follow-up diagnostics (`TEACHER_DRIFT_DIAGNOSIS.md`) found that the privileged
-teacher also fails on three selected easy questions at step 32: both contexts
-go from 3/3 correct initially to 0/3 within a 512-token diagnostic budget.
-Student/teacher KL decreases on identical failed prefixes despite this shared
-degradation. This supports investigating moving-teacher instability but does
-not identify the initiating cause or rule out implementation issues.
-
-Ordinary RL improved the 4B student's held-out math accuracy. Product rollouts
-using the same model with a privileged answer initially improved accuracy, then
-collapsed into short, mostly incorrect answer-only responses. Replacing that
-teacher with a frozen question-only 9B model avoided this collapse through the
-192 steps tested and reached 70.7% accuracy. Its advantage over ordinary RL at
-the same step was only two questions out of 256; this is not a decisive win.
+The two subsequent experiments tested ordinary full-vocabulary OPD:
+**D (moving privileged self-teacher)** collapsed by step 32, while **E (frozen
+initial privileged self-teacher)** avoided that early collapse but showed no
+clear learning gain and was stopped by the user after 205 updates. All five
+runs are finished or stopped; none is currently training.
 
 ### Shared setup
 
 - Student: Qwen3.5-4B, revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`.
 - Non-thinking, concise prompt, temperature 1, no top-k/top-p, 2,048-token output cap.
-- Rank-16 LoRA; AdamW LR 2e-5; seed 42. Four questions × four rollouts per update.
-- Sampled student-imitation loss, with beta=0: reward minus within-question mean.
+- Rank-16 LoRA; AdamW LR 2e-5; seed 42. Sixteen rollouts per update.
+- A–C: four questions × four rollouts, sampled student-imitation loss,
+  with beta=0: reward minus within-question mean.
   No standard-deviation scaling, ratio clipping, or off-policy importance correction.
   Fixed-length loss normalization. One optimizer update per fresh rollout batch.
 - Big-Math-RL-Verified revision `c75d2f117cddfecb6bd08756e61e508e59732b21`.
-  2,048 prepared training questions, all sources retained using source-balanced
+  A–C use 2,048 prepared training questions, all sources retained using source-balanced
   selection, not the dataset's natural source proportions. Calibration questions excluded.
 - 256 held-out questions, split by normalized-question hash before selection;
   evaluation always uses student-only, question-only prompts. One sampled answer
-  per question, fixed evaluation seeds and batch size 8, before training and every 64 steps.
+  per question, fixed evaluation seeds and batch size 8, before training and every
+  64 steps for A–C, every 32 for D–E.
+- D–E: 16 distinct questions × one rollout; expanded 8,192-question pool,
+  original training prefix retained and identical holdout. Full-vocabulary
+  reverse KL to the privileged teacher, alpha=0 (student-only rollouts), no
+  reward weighting or clipping. Teacher branch detached; D uses current shared
+  weights, E disables LoRA for teacher forwards to expose the frozen initial base.
 - Checkpoints every 32 steps, recovery-safe 64-step segments. No separate
   non-math retention suite and no multi-seed replication.
 
 ### Held-out accuracy by update
 
-| Step | A: ordinary RL, alpha=0 | B: privileged self-teacher, alpha=0.5 | C: frozen question-only 9B, alpha=0.5 |
-| ---: | ---: | ---: | ---: |
-| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) |
-| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) |
-| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) |
-| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) |
-| 256 | 69.14% (177/256) | 17.58% (45/256) | — |
-| 320 | 68.36% (175/256) | 17.58% (45/256) | — |
-| 384 | 68.36% (175/256) | 16.02% (41/256) | — |
-| 448 | 70.70% (181/256) | 14.06% (36/256) | — |
-| 512 | 69.53% (178/256) | 13.67% (35/256) | — |
+A: ordinary RL (alpha=0); B: privileged moving-self-teacher product imitation
+(alpha=0.5); C: frozen question-only 9B product imitation (alpha=0.5);
+D/E: privileged-self-teacher OPD (alpha=0), moving/frozen respectively.
+An em dash means no evaluation at that step, not zero accuracy.
+
+| Step | A: RL | B: product, self | C: product, 9B | D: OPD, moving | E: OPD, frozen |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) |
+| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) |
+| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) |
+| 96 | — | — | — | — | 61.72% (158/256) |
+| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) |
+| 160 | — | — | — | — | 64.45% (165/256) |
+| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) |
+| 256 | 69.14% (177/256) | 17.58% (45/256) | — | — | — |
+| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — |
+| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — |
+| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — |
+| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — |
 
 These are single-run measurements. C's baseline differs by two questions despite
 matched student revision and seeds; execution hardware differs and numerical
 reproducibility has not been conclusively diagnosed. Do not treat different
 baseline scores as evidence of different intended student initialization.
 The best observed checkpoint is selected using this holdout, not an independent test set.
+Equal update counts are not equal question exposure: D–E see four times as many
+distinct training questions per update as A–C. Token counts, evaluation cadence,
+and hardware also matter for efficiency comparisons.
 
 ### A: ordinary RL
 
@@ -154,6 +151,57 @@ Config: `configs/teacher9b_192.json`.
 - Recorded generation/update time: **11.02 hours**, excluding evaluation/setup.
 - Relative to B, both teacher identity and access to privileged answers change;
   this is not a one-variable ablation. General retention remains unmeasured.
+
+### D: OPD with moving privileged-context self-teacher
+
+Run: `bigmath-4b-opd-512-20260928`.
+Local archive: `artifacts/opd-stopped-20260928/bigmath-4b-opd-512-20260928/`.
+Config: `configs/opd_4b_privileged_512.json`.
+
+- One A10, 4 CPU cores, 32GB host RAM. Fresh 4B student; teacher shares current
+  weights but receives the verified answer. Full-vocabulary OPD, not B's
+  reward-weighted sampled imitation. Planned 512 updates.
+- **Stopped for collapse after 37 committed updates**, 579,181 generated
+  training tokens; last checkpoint 32. No step-37 evaluation exists.
+- Step 32: **0.78% (2/256)** after **427,160 training tokens**, versus baseline
+  63.28%. Mean response length rose from 876.07 to **1,817.67**; 169/256 capped.
+  Samples became long generic mathematical prose, unlike B's short answers.
+- Follow-up diagnostics found both student and privileged teacher went from
+  3/3 to 0/3 on three selected easy questions within a 512-token budget.
+  Their KL decreased on identical failed prefixes despite shared degradation.
+  This supports investigating teacher drift, not a definitive causal diagnosis.
+- App stopped and monitor disabled. Token counts exclude evaluations and pilot
+  work. See `OPD_512_RUN.md` and `TEACHER_DRIFT_DIAGNOSIS.md`.
+
+### E: OPD with frozen privileged-context self-teacher
+
+Run: `bigmath-4b-frozen-opd-512-20260928`.
+Local archive: `artifacts/frozen-opd-stopped-20260929/bigmath-4b-frozen-opd-512-20260928/`.
+Config: `configs/opd_4b_frozen_privileged_512.json`.
+
+- One A10, 4 CPU cores, 32GB host RAM. Matched fresh-start ablation of D:
+  same data, LR, loss, prompts and rollout settings, but privileged teacher
+  frozen at initial base weights by disabling LoRA during teacher forwards.
+  No clipping or EMA. GPU preflight verified exactly invariant teacher logits
+  after three student updates; no diagnostic adapters reused.
+- **Stopped by user for lack of learning after 205 committed updates**,
+  **2,764,230 generated training tokens**; last checkpoint 192.
+- Latest held-out accuracy: **63.67% (163/256)** at step 192, versus baseline
+  63.28%. Best observed: **64.45% (165/256)** at step 160. Neither establishes
+  a clear learning gain. Step-192 mean length was 821.06 tokens; 54 capped.
+- Avoided D's early collapse, but ordinary RL A reached 69.92% at step 192.
+  This is a single-run comparison, not a general verdict on frozen-teacher OPD.
+- App confirmed stopped with zero tasks; monitor paused. Checkpoint, optimizer,
+  RNG, rollouts and evaluations archived; no post-stop checkpoint reload test.
+  See `FROZEN_OPD_RUN.md` for provenance and stop details.
+
+| E update | Cumulative generated training tokens | Held-out accuracy |
+| ---: | ---: | ---: |
+| 32 | 451,851 | 63.67% |
+| 64 | 877,379 | 61.72% |
+| 96 | 1,304,928 | 61.72% |
+| 128 | 1,736,483 | 61.72% |
+| 192 | 2,602,206 | 63.67% |
 
 ## Earlier 9B training pilot
 
@@ -255,7 +303,10 @@ learning gains. Details and individual run names are in `BUILD_REPORT.md`.
    failure mode under the settings tested.
 3. Frozen question-only 9B guidance is promising through 192 steps but has not
    established a statistically robust or compute-matched advantage over RL.
-4. These experiments do not measure general instruction-following retention,
+4. Moving privileged-self-teacher OPD (D) collapsed rapidly; freezing that teacher
+   (E) avoided the same early collapse but produced no clear learning gain through
+   the last evaluated checkpoint, step 192.
+5. These experiments do not measure general instruction-following retention,
    non-math generalization, semantic train/test decontamination, or multi-seed variance.
-5. Timings are measured compute phases, not invoices. Accuracy-selected best
+6. Timings are measured compute phases, not invoices. Accuracy-selected best
    checkpoints and different model/hardware configurations require cautious comparisons.

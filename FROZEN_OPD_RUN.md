@@ -1,8 +1,54 @@
 # Frozen privileged teacher OPD ablation
 
-Status: dispatched 2026-09-28 after successful A10 preflight; waiting for
-training startup. At handoff, the call is pending and progress.json is not yet
-present. Do not treat this as evidence of a completed update or relaunch it.
+## Stopped by user — September 29, 2026
+
+Dedicated app confirmed stopped with zero tasks at 17:59:54 UTC; monitor PAUSED.
+205 updates committed, 2,764,230 generated training tokens. Last checkpoint is
+192; later updates survive as metrics/rollouts only. No restart authorized.
+Latest held-out score: step 192, 163/256 (63.67%), versus baseline 162/256
+(63.28%); best observed 165/256 (64.45%) at step 160. No clear learning gain,
+but no moving-teacher-style collapse. Step-192 mean response length 821.06,
+54 capped, after 2,602,206 generated training tokens.
+Local archive destination: `artifacts/frozen-opd-stopped-20260929/`.
+Download complete: 286 files / 2,687,178,310 bytes, all local sizes match remote.
+This verifies completeness and size, not checksums or checkpoint reload.
+Remote originals retained. Remote progress.json may still say running; this
+verified stop record supersedes it. Historical monitoring snapshots follow.
+
+Status: running as of 2026-09-29 15:02 UTC, step 173 committed, 2,359,786
+cumulative generated training tokens. Step-160 evaluation recovered to 165/256
+(64.453125%), mean length 837.12, 60 capped; checkpoint 160 is present.
+This breaks the exact 61.72% plateau but is only three questions above baseline,
+not convincing evidence of a learning gain. No collapse or failure detected.
+Prior saturation review remains documented below; no repeat alert for routine
+score fluctuation.
+
+Saturation review triggered at the 2026-09-29 09:23 UTC check.
+Step 140 committed, 1,900,206 cumulative generated training tokens. Evaluations
+at steps 64, 96, and 128 all scored 158/256 (61.71875%), below baseline
+162/256. Step 96 used 1,304,928 training tokens; step 128 used 1,736,483.
+Mean eval lengths at 96/128: 838.68/880.28 tokens; capped counts 62/68.
+This meets the three-evaluation no-improvement review rule, not the collapse
+stop rule. User notified; run left active pending direction. Checkpoint 128
+is committed and the successor is running in `segment-000192-attempt-04c7c2eea1cf`,
+call `fc-01M3PFGTEHBKDE7HH1NPZ3T63G`. Do not repeat the same saturation alert
+unless new evidence materially changes the assessment. Earlier snapshot:
+
+As of the 2026-09-29 06:26 UTC monitoring check:
+Step 71 committed, 976,533 cumulative generated training tokens. Step-64 eval:
+158/256 (61.71875%), mean 852.02 tokens, 66 capped; 877,379 training tokens
+through step 64. No collapse threshold reached; only two post-training evals,
+so no three-evaluation saturation trigger yet. Segment 128 is active at
+`segment-000128-attempt-f69b0870fa8d`, call `fc-01M3NWKPBC54KCYNG37EA2MHVM`,
+resumed from committed checkpoint 64. Earlier monitoring snapshot:
+36 updates committed in `segment-000064-attempt-9dcb7c623968`, 504,832 generated
+training tokens. Step-32 checkpoint adapter, optimizer, RNG and state files are
+present and nonempty. Baseline accuracy is 162/256 (63.28125%); step 32 is
+163/256 (63.671875%) after 451,851 generated training tokens. No early collapse
+on this evaluation (moving teacher was 2/256 at step 32), but a one-question
+increase is not evidence of meaningful improvement or long-term stability.
+The segment-level progress file now reports completed_steps=128, target=192;
+per-update metrics are the authoritative source within a running segment.
 Initial detached call: `fc-01M3N54VNJ09Y22A6YE1JH944W`.
 The existing monitor `monitor-4b-privileged-opd` now targets this frozen run
 and is ACTIVE, checking every 30 minutes.
