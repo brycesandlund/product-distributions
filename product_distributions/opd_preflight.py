@@ -59,7 +59,8 @@ def benchmark(config, output, data, cache, commit):
     config.validate()
     assert config.loss == "opd_full" and config.alpha == 0 and config.group_size == 1
     assert config.prompts_per_step == 16 and config.max_new_tokens == 2048
-    assert config.model_id == "Qwen/Qwen3.5-4B" and config.teacher_model_id is None
+    assert config.model_id == "Qwen/Qwen3.5-4B"
+    assert config.teacher_model_id in (None, "Qwen/Qwen3.5-9B")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     report = {"config": asdict(config), "status": "loading", "updates": [],
@@ -70,6 +71,10 @@ def benchmark(config, output, data, cache, commit):
         write_json(output / "summary.json", report)
         commit()
         trainer = Trainer(config, cache)
+        teacher_versions = None
+        if config.teacher_model_id:
+            assert not any(p.requires_grad for p in trainer.teacher.parameters())
+            teacher_versions = [p._version for p in trainer.teacher.parameters()]
         examples = read_examples(Path(data) / "train.jsonl")
         report.update(gpu=torch.cuda.get_device_name(), setup_seconds=perf_counter()-started)
         # Force a full-cap backward pass even if all natural pilot rollouts end early.
@@ -100,6 +105,13 @@ def benchmark(config, output, data, cache, commit):
         commit()
         for step in range(3):
             metrics, records = trainer.update(examples[step*16:(step+1)*16])
+            import math
+            assert all(math.isfinite(metrics[k]) for k in ("loss", "grad_norm", "adapter_update_norm"))
+            assert metrics["grad_norm"] > 0 and metrics["adapter_update_norm"] > 0
+            if teacher_versions is not None:
+                assert teacher_versions == [p._version for p in trainer.teacher.parameters()]
+                assert all(p.grad is None for p in trainer.teacher.parameters())
+                metrics["teacher_unchanged"] = True
             metrics.update(peak_reserved_gib=torch.cuda.max_memory_reserved()/2**30,
                            host_peak_gib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/2**20)
             report["updates"].append(metrics)

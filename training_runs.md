@@ -1,6 +1,6 @@
 # Training runs and experimental results
 
-Snapshot date: 2026-09-29. All reported accuracies below are verifier scores,
+Snapshot date: 2026-10-02. All reported accuracies below are verifier scores,
 not human assessments of derivation quality. No new GPU jobs were launched to
 prepare this overview.
 
@@ -46,8 +46,12 @@ The two subsequent experiments tested full-vocabulary on-policy self-distillatio
 initial privileged self-teacher)** avoided that early collapse but showed no
 clear learning gain and was stopped by the user after 205 updates. C completed
 its original 192-update budget; on September 29 the user authorized 192 more
-updates from checkpoint 192 (384 total). That continuation is submitted;
-A, B, D, and E remain finished or stopped.
+updates from checkpoint 192 (384 total). That continuation subsequently
+degenerated and was stopped after 296 committed updates; see C below.
+**F (ordinary OPD with frozen question-only 9B teacher)** was submitted October 2
+for 192 updates after a successful three-update preflight; no learning results yet.
+A–E are stopped or finished. An inference-only C cache diagnostic is being
+launched separately; it does not update model weights.
 
 ### Shared setup
 
@@ -89,13 +93,17 @@ An em dash means no evaluation at that step, not zero accuracy.
 | 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) |
 | 160 | — | — | — | — | 64.45% (165/256) |
 | 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) |
-| 256 | 69.14% (177/256) | 17.58% (45/256) | — | — | — |
+| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — |
 | 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — |
 | 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — |
 | 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — |
 | 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — |
 
-These are single-run measurements. C's baseline differs by two questions despite
+These are single-run measurements. *C's step-256 result is from the restarted continuation
+attempt; the first attempt did not publish a completed step-256 evaluation.
+Its failure mechanism is unresolved, so this is not a clean algorithm comparison.
+
+C's baseline differs by two questions despite
 matched student revision and seeds; execution hardware differs and numerical
 reproducibility has not been conclusively diagnosed. Do not treat different
 baseline scores as evidence of different intended student initialization.
@@ -152,12 +160,48 @@ Config: `configs/teacher9b_192.json`.
   optimizer/RNG and all hyperparameters. Config: `configs/teacher9b_384.json`.
   Next 768 training questions, same holdout, evaluations at 256/320/384.
   Call `fc-01M3R9GWWKG6B21P2FS23DAZ2A`; details in `TEACHER9B_192_RUN.md`.
-- Final gain: **+8.20 percentage points**, 21 additional correct answers.
+- Original step-192 gain: **+8.20 percentage points**, 21 additional correct answers.
   No answer-only collapse through this horizon: final mean response length
   884 tokens; 51/256 evaluation responses hit the cap.
 - Recorded generation/update time: **11.02 hours**, excluding evaluation/setup.
 - Relative to B, both teacher identity and access to privileged answers change;
   this is not a one-variable ablation. General retention remains unmeasured.
+
+#### C continuation: degeneration and interrupted/replayed segment
+
+- First attempt `segment-000256-attempt-9066c8f31fc8` recorded steps 193–256,
+  but its latest committed checkpoint was 224; no completed eval-256 file.
+- The same submitted Modal call returned a second attempt,
+  `segment-000256-attempt-5d3452880ef2`, starting at 225 from checkpoint 224.
+  The restart trigger is not established from saved artifacts. Steps 225–256
+  are replayed work, not additional unique updates; do not double-count them
+  in a learning curve (retain their cost in compute accounting).
+- The first attempt already showed garbled text at step 216; 13/16 rollouts
+  at step 238 contained the repeated Korean token seen in the later collapse.
+  Some garbled outputs still received positive verifier reward and weight.
+- Restarted attempt: step-256 held-out accuracy **0/256**, all responses hit
+  2,048 tokens; inspected outputs are repetitive gibberish. Checkpoint 256
+  passed its reload check with zero logit error, which does not establish health.
+- Successor `segment-000320-attempt-3b55e0f6ce26` recorded steps 257–296 with
+  zero reward/gradient and all 16 responses capped on every update. Nonzero
+  shrinking adapter updates persisted through Adam momentum. Last saved
+  checkpoint is 288; original checkpoint 192 remains preserved remotely.
+- Stopped September 30. This stop was issued before the user's read-only-first
+  clarification arrived; no subsequent restart was performed. Remote progress
+  may still say running; that is stale. Continuation artifacts remain on Modal
+  and are not included in the September 28 local archive.
+- Recorded configs, package versions, GPU type and dataset fingerprint match.
+  Cached-rollout versus teacher-forced student log-probability discrepancies
+  increased before overt collapse; numerical versus algorithmic causality is
+  unresolved. Source comparison found no changes to C's sampler or imitation
+  objective since the original run. Fixed-prefix inference diagnostics at
+  checkpoints 192/224 are the next check, not further training.
+  Diagnostic submitted October 2: `modal_c_cache_diagnosis.py`, call
+  `fc-01M3YQNE74K36MB12TDNE5GSEN`, A10, 30-minute hard timeout, no optimizer
+  steps. Compares two fixed saved sequences (up to 1,024 tokens each), single
+  and padded-batch cached decoding against full-sequence scoring, with FLA and
+  explicit reference kernels. Report: `diagnostics/c-cache-20261002/report.json`
+  on the results volume. Pending; no diagnostic conclusion yet.
 
 ### D: OPSD with moving privileged-context self-teacher
 
@@ -209,6 +253,30 @@ Config: `configs/opd_4b_frozen_privileged_512.json`.
 | 96 | 1,304,928 | 61.72% |
 | 128 | 1,736,483 | 61.72% |
 | 192 | 2,602,206 | 63.67% |
+
+### F: OPD with frozen question-only 9B teacher
+
+Config: `configs/opd_teacher9b_192.json`. Submitted October 2 for 192 updates.
+Run: `bigmath-4b-opd-9b-F-192-20261002` on the results volume under `runs/`.
+Call: `fc-01M3YQT1ZPNVCWMFMECJT7M3NA`.
+Dedicated app: `product-distributions-arm-f-training`; entrypoint
+`modal_arm_f_training.py::train_segment`. Fresh weights, no preflight adapter
+reused. Baseline evaluation then evaluations at 64/128/192, checkpoints every
+32. Three recovery-aware 64-update segments; hard ceiling 192, no extension
+authorized. Consumes 3,072 distinct training questions from the expanded pool.
+Remote progress confirms running at step 0, target 64, total 192, no resume
+checkpoint, in `segment-000064-attempt-1187419dace7`. No update completed yet.
+Remote preflight: `hardware-benchmarks/arm-f-opd-9b-l40s-20260929/`.
+
+- Fresh 4B student, frozen 9B teacher, neither context privileged; alpha=0,
+  full-vocabulary reverse KL, no reward weighting/clipping. 16 independent
+  questions per update, same expanded data as D/E, 2K cap, LR 2e-5.
+- L40S / four CPU cores / 64 GiB host RAM. Forced 2K backward pass and three
+  real updates passed, with finite/nonzero student gradients and unchanged teacher.
+- Rollout plus update: 122.38, 121.43, 121.84 seconds. Peak allocated VRAM
+  33.60 GiB; maximum reserved 43.74 GiB. Total preflight 443.61 seconds.
+- Checkpoint reload max logit error **0.0**. These are feasibility results,
+  not evidence of learning. Disposable preflight adapters must not be reused.
 
 ## Earlier 9B training pilot
 
@@ -310,6 +378,8 @@ learning gains. Details and individual run names are in `BUILD_REPORT.md`.
    failure mode under the settings tested.
 3. Frozen question-only 9B guidance is promising through 192 steps but has not
    established a statistically robust or compute-matched advantage over RL.
+   C's continuation subsequently degenerated; the cause remains unresolved.
+   F's full run is submitted after passing preflight; no learning comparison yet.
 4. Moving privileged-self-teacher OPSD (D) collapsed rapidly; freezing that teacher
    (E) avoided the same early collapse but produced no clear learning gain through
    the last evaluated checkpoint, step 192.
