@@ -1,6 +1,6 @@
 # Training runs and experimental results
 
-Snapshot date: 2026-10-05. All reported accuracies below are verifier scores,
+Snapshot date: 2026-10-06. All reported accuracies below are verifier scores,
 not human assessments of derivation quality. No new GPU jobs were launched to
 prepare this overview.
 
@@ -55,6 +55,10 @@ completed without comparable degeneration, reaching 72.27%; it is a diagnostic
 branch, not a replacement for C's original learning curve. C's inference-only
 cache diagnostic also completed; see the diagnostic results below.
 
+**G (product imitation with frozen privileged self-teacher)** initially improved
+to 66.80% at 64, then collapsed to **0.39% at 256**. Stopped after that evaluation
+and checkpoint on October 6; all A–G runs are now stopped or finished.
+
 ### Shared setup
 
 - Student: Qwen3.5-4B, revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`.
@@ -88,22 +92,23 @@ A: ordinary RL (alpha=0); B: privileged moving-self-teacher product imitation
 (alpha=0.5); C: frozen question-only 9B product imitation (alpha=0.5);
 D/E: privileged-self-teacher OPSD (alpha=0), moving/frozen respectively.
 F: frozen question-only 9B OPD (alpha=0).
+G: frozen privileged-self-teacher product imitation (alpha=0.5).
 An em dash means no evaluation at that step, not zero accuracy.
 
-| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen | F: OPD, 9B |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) |
-| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) | — |
-| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) | 65.23% (167/256) |
-| 96 | — | — | — | — | 61.72% (158/256) | — |
-| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) | 67.19% (172/256) |
-| 160 | — | — | — | — | 64.45% (165/256) | — |
-| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) | 67.58% (173/256) |
-| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — | — |
-| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — | — |
-| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — | — |
-| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — | — |
-| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — | — |
+| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen | F: OPD, 9B | G: product, frozen self |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) |
+| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) | — | — |
+| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) | 65.23% (167/256) | 66.80% (171/256) |
+| 96 | — | — | — | — | 61.72% (158/256) | — | — |
+| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) | 67.19% (172/256) | 61.72% (158/256) |
+| 160 | — | — | — | — | 64.45% (165/256) | — | — |
+| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) | 67.58% (173/256) | 60.94% (156/256) |
+| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — | — | 0.39% (1/256) |
+| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — | — | — |
+| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — | — | — |
+| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — | — | — |
+| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — | — | — |
 
 These are single-run measurements. *C's step-256 result is from the restarted continuation
 attempt; the first attempt did not publish a completed step-256 evaluation.
@@ -348,6 +353,47 @@ Remote preflight: `hardware-benchmarks/arm-f-opd-9b-l40s-20260929/`.
 - Final accuracy was below original C's 70.70% and A's 69.92% at step 192.
   This is a single-run, unequal-question-exposure comparison, not a
   compute-matched or statistically established ranking of the methods.
+
+### G: product imitation with frozen privileged-context self-teacher
+
+Submitted October 5 for 512 updates; **stopped at 256 on October 6** as authorized
+after degeneration, once the evaluation and complete checkpoint were committed.
+Run: `runs/bigmath-4b-product-frozen-self-G-512-20261005/` on Modal.
+Call: `fc-01M46WJ297T7Q45416EVP5AG44`.
+App: `product-distributions-arm-g-training`; entrypoint `modal_arm_g_training.py`.
+Config: `configs/imitation_frozen_self_512.json`.
+
+- Matched B settings: fresh 4B, alpha=0.5, beta=0, four questions × four
+  rollouts, 2K cap, LR 2e-5, LoRA rank 16, seed 42, same 2,048-question pool
+  and holdout. A10 / four CPU cores / 32 GiB host RAM. Evaluations every 64,
+  checkpoints every 32; recovery-aware segments stop at 512 total updates.
+- Teacher sees the verified answer but uses the frozen initial base weights.
+  Rollouts batch student `default` LoRA rows with teacher `__base__` rows;
+  backward uses only student imitation. This is B's frozen-teacher ablation,
+  not E's full-vocabulary OPSD objective.
+- Disposable mixed-adapter preflight passed teacher-logit invariance after a
+  student update. Two-pair, 16-step cached decoding showed small mixed/separate
+  numerical differences; it was not a production-length throughput benchmark.
+  Report: `diagnostics/mixed-lora-20261005/report.json`. Local suite: 48 passed.
+- Initial attempt reached 33, then recovery resumed checkpoint 32; step 33 was
+  replayed. Restart cause remains unestablished. Do not double-count that update.
+- Evaluation trajectory (accuracy / mean response tokens / capped):
+  0: **63.28% / 876.07 / 61**; 64: **66.80% / 737.10 / 47**;
+  128: **61.72% / 148.11 / 0**; 192: **60.94% / 448.31 / 1**;
+  256: **0.39% (1/256) / 2,040.67 / 255**.
+- Inspection at 226–228 found multilingual word salad, repeated digits and long
+  loops of “similarly” or “temporarily,” alongside coherent responses. One
+  malformed but verifier-correct response received positive advantage +0.25.
+  Freezing the privileged teacher did not prevent collapse under these settings;
+  similarity to C's symptoms does not establish a shared root cause.
+- Final artifacts: `segment-000256-attempt-f7f05cb313e9/eval-000256.json` and
+  `segment-000256-attempt-f7f05cb313e9/checkpoint-000256/`. Adapter, optimizer,
+  RNG and state files verified present/nonempty. Reload max logit error **0.0**.
+- Stop monitor confirmed both artifacts before stopping only G's app
+  `ap-Qix7e8BnaEek74GAMGt5cQ` at **2026-10-06 13:25:52 America/Los_Angeles**.
+  App confirmed stopped with zero tasks. Last recorded update **256**; no
+  completed-update overshoot. Any successor startup was cut off by the app stop.
+  Monitor disabled after completion; artifacts remain on Modal.
 
 ## Earlier 9B training pilot
 

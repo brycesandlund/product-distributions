@@ -54,6 +54,21 @@ def config(teacher_weight):
     )
 
 
+def test_frozen_self_adapter_routing_persists_through_decode():
+    class RecordingModel(FakeModel):
+        def forward(self, *args, adapter_names=None, **kwargs):
+            self.routes.append(adapter_names)
+            return super().forward(*args, **kwargs)
+    model = RecordingModel(2)
+    model.routes = []
+    sampler = ProductSampler(model, FakeTokenizer(), fixed_self_teacher=True)
+    sampler.generate(["student"] * 2, ["teacher"] * 2, config=config(0.5))
+    assert model.routes == [["default", "default", "__base__", "__base__"]] * 2
+    model.routes.clear()
+    sampler.generate(["student"], ["teacher"], config=config(0))
+    assert model.routes == [None, None]
+
+
 def test_shared_model_batches_both_contexts_in_one_forward_per_step():
     tokenizer = FakeTokenizer()
     model = FakeModel(preferred_token=2)

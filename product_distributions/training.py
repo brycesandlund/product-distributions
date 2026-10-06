@@ -51,9 +51,10 @@ class TrainConfig:
 
     def validate(self):
         if self.fixed_self_teacher and not (
-            self.loss == "opd_full" and self.alpha == 0 and self.teacher_model_id is None
+            self.teacher_model_id is None and
+            (self.loss == "imitation" or (self.loss == "opd_full" and self.alpha == 0))
         ):
-            raise ValueError("fixed_self_teacher currently requires opd_full, alpha=0, and no separate teacher")
+            raise ValueError("fixed_self_teacher requires imitation or alpha=0 opd_full, and no separate teacher")
         if self.loss not in {"imitation", "opd", "opd_full"}:
             raise ValueError("loss must be imitation, opd, or opd_full")
         if not 0 <= self.alpha <= 1 or not 0 <= self.beta <= 1:
@@ -199,7 +200,8 @@ class Trainer:
             )
             self.teacher.requires_grad_(False).eval()
         self.sampler = ProductSampler(
-            self.model, self.tokenizer, self.teacher, self.teacher_tokenizer
+            self.model, self.tokenizer, self.teacher, self.teacher_tokenizer,
+            fixed_self_teacher=config.fixed_self_teacher,
         )
         self.step = 0
         self.data_fingerprint = None

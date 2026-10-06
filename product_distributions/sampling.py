@@ -117,6 +117,7 @@ def _forward(
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     past_key_values: Any = None,
+    adapter_names: list[str] | None = None,
 ) -> _DecodeState:
     outputs = model(
         input_ids=input_ids,
@@ -125,6 +126,7 @@ def _forward(
         use_cache=True,
         logits_to_keep=1,
         return_dict=True,
+        **({"adapter_names": adapter_names} if adapter_names is not None else {}),
     )
     return _DecodeState(
         attention_mask=attention_mask,
@@ -138,6 +140,7 @@ def _advance(
     state: _DecodeState,
     token_ids: torch.Tensor,
     active: torch.Tensor,
+    adapter_names: list[str] | None = None,
 ) -> _DecodeState:
     device = state.next_logits.device
     token_ids = token_ids.to(device=device, non_blocking=True).unsqueeze(1)
@@ -152,6 +155,7 @@ def _advance(
         input_ids=token_ids,
         attention_mask=attention_mask,
         past_key_values=state.past_key_values,
+        adapter_names=adapter_names,
     )
 
 
@@ -214,6 +218,7 @@ class ProductSampler:
         teacher_tokenizer: Any | None = None,
         *,
         verify_vocabularies: bool = True,
+        fixed_self_teacher: bool = False,
     ) -> None:
         self.student_model = student_model
         self.student_tokenizer = student_tokenizer
@@ -222,6 +227,9 @@ class ProductSampler:
             student_tokenizer if teacher_tokenizer is None else teacher_tokenizer
         )
         self.shared_model = self.student_model is self.teacher_model
+        self.fixed_self_teacher = fixed_self_teacher
+        if fixed_self_teacher and not self.shared_model:
+            raise ValueError("Fixed self teacher requires a shared PEFT model")
 
         if (
             verify_vocabularies
@@ -256,6 +264,8 @@ class ProductSampler:
         student_only = config.teacher_weight == 0 and not config.compute_diagnostics and not config.require_teacher_logprobs
         teacher_device = student_device if student_only else _model_device(self.teacher_model)
         batch_size = len(student_prompts)
+        adapter_names = (["default"] * batch_size + ["__base__"] * batch_size
+                         if self.fixed_self_teacher else None)
         generator = None
         if config.seed is not None:
             generator = torch.Generator(device=student_device).manual_seed(config.seed)
@@ -274,7 +284,7 @@ class ProductSampler:
                 student_prompts + teacher_prompts,
                 student_device,
             )
-            shared_state = _forward(self.student_model, **encoded)
+            shared_state = _forward(self.student_model, **encoded, adapter_names=adapter_names)
             student_state = _DecodeState(
                 attention_mask=shared_state.attention_mask[:batch_size],
                 past_key_values=shared_state.past_key_values,
@@ -373,6 +383,7 @@ class ProductSampler:
                     shared_state,
                     token_pair,
                     active_pair,
+                    adapter_names=adapter_names,
                 )
                 student_state = _DecodeState(
                     attention_mask=shared_state.attention_mask[:batch_size],
