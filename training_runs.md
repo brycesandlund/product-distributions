@@ -1,6 +1,6 @@
 # Training runs and experimental results
 
-Snapshot date: 2026-10-06. All reported accuracies below are verifier scores,
+Snapshot date: 2026-10-08. All reported accuracies below are verifier scores,
 not human assessments of derivation quality. No new GPU jobs were launched to
 prepare this overview.
 
@@ -59,6 +59,37 @@ cache diagnostic also completed; see the diagnostic results below.
 to 66.80% at 64, then collapsed to **0.39% at 256**. Stopped after that evaluation
 and checkpoint on October 6; all A–G runs are now stopped or finished.
 
+**H (annealed moving privileged self-teacher → ordinary RL)** was launched
+October 6 for 256 updates on A10 and completed all 256 updates. It finished at
+**67.97% (174/256)** without collapse, three questions behind A at the same step.
+This matches B except
+for the alpha schedule, total duration, and evaluations every 32 updates.
+
+### H: annealed privileged self-teacher (completed)
+
+- Fresh Qwen3.5-4B with the current shared-weight privileged teacher, not frozen.
+- Rollout alpha at completed-update index k is `0.5 * max(1 - k / 128, 0)`:
+  update 1 uses 0.5, update 128 uses 0.00390625, and updates 129–256 use zero.
+  Beta remains zero; all other optimizer, sampling and prompt settings match B.
+- Same 2,048-question pool/order and 256-question holdout as B. Four questions
+  × four rollouts per update; A10, 4 CPU, 32 GiB RAM. Eval/checkpoint every 32;
+  recovery-safe 64-update segments preserve optimizer state and schedule position.
+  Alpha zero bypasses teacher inference. Per-update metrics record actual alpha.
+- Config: `configs/imitation_annealed_self_256.json`;
+  entrypoint: `modal_arm_h_training.py`; 51 local tests passed before launch.
+- Modal app: `product-distributions-arm-h-training`;
+  initial call: `fc-01M49Z0N0K4DAWRGG53SZR73F9`.
+- Remote run: `runs/bigmath-4b-product-annealed-self-H-256-20261006` on
+  `product-distributions-results`. Final checkpoint:
+  `segment-000256-attempt-57923199669f/checkpoint-000256`; adapter, optimizer,
+  RNG and state files saved; reload max-logit error 0. Zero active tasks confirmed.
+- Best evaluation: 68.36% (175/256) at step 224; final: 67.97% (174/256).
+  Final mean response length 758.61 tokens; 46/256 reached the 2,048-token cap.
+  Maximum recorded gradient norm across attempts: 0.0531.
+- An early restart repeated the initial segment. The table uses evaluations
+  from `segment-000064-attempt-1fe4f0ae8261` and subsequent completed segments;
+  the earlier attempt's baseline was 163/256 rather than 162/256.
+
 ### Shared setup
 
 - Student: Qwen3.5-4B, revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`.
@@ -93,22 +124,38 @@ A: ordinary RL (alpha=0); B: privileged moving-self-teacher product imitation
 D/E: privileged-self-teacher OPSD (alpha=0), moving/frozen respectively.
 F: frozen question-only 9B OPD (alpha=0).
 G: frozen privileged-self-teacher product imitation (alpha=0.5).
+H: moving privileged-self-teacher product imitation, alpha 0.5→0 over 128
+updates, followed by 128 ordinary RL updates.
 An em dash means no evaluation at that step, not zero accuracy.
 
-| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen | F: OPD, 9B | G: product, frozen self |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) |
-| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) | — | — |
-| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) | 65.23% (167/256) | 66.80% (171/256) |
-| 96 | — | — | — | — | 61.72% (158/256) | — | — |
-| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) | 67.19% (172/256) | 61.72% (158/256) |
-| 160 | — | — | — | — | 64.45% (165/256) | — | — |
-| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) | 67.58% (173/256) | 60.94% (156/256) |
-| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — | — | 0.39% (1/256) |
-| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — | — | — |
-| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — | — | — |
-| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — | — | — |
-| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — | — | — |
+| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen | F: OPD, 9B | G: product, frozen self | H: annealed self → RL |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) |
+| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) | — | — | 65.62% (168/256) |
+| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) | 65.23% (167/256) | 66.80% (171/256) | 66.02% (169/256) |
+| 96 | — | — | — | — | 61.72% (158/256) | — | — | 62.89% (161/256) |
+| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) | 67.19% (172/256) | 61.72% (158/256) | 66.80% (171/256) |
+| 160 | — | — | — | — | 64.45% (165/256) | — | — | 67.97% (174/256) |
+| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) | 67.58% (173/256) | 60.94% (156/256) | 67.97% (174/256) |
+| 224 | — | — | — | — | — | — | — | 68.36% (175/256) |
+| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — | — | 0.39% (1/256) | 67.97% (174/256) |
+| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — | — | — | — |
+| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — | — | — | — |
+| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — | — | — | — |
+| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — | — | — | — |
+
+**Standalone 9B teacher, step 0: 64.84% (166/256).** Evaluated October 6 on the
+same 256-question holdout with question-only, non-thinking concise prompts,
+temperature 1, no top-k/top-p, 2,048-token cap, batch size 8, and the same
+evaluation seed schedule. Frozen Qwen3.5-9B revision
+`c202236235762e1c871ad0ccb60c8ee5ba337b9a`; no adapters, training, or privileged
+answers. Mean response length **793.07 tokens**; **62/256** hit the cap.
+Runtime **50.6 minutes** on L40S. Remote report on `product-distributions-results`:
+`diagnostics/teacher9b-holdout256-20261006/report.json`; entrypoint
+`modal_teacher9b_eval.py`, call `fc-01M49JC14WQ8E2HNKPSES9V2S6`.
+F's final 4B score (173/256) exceeded this teacher baseline by seven questions
+without verifier-reward weighting during training. This single sampled evaluation
+does not establish a statistically robust student-over-teacher advantage.
 
 These are single-run measurements. *C's step-256 result is from the restarted continuation
 attempt; the first attempt did not publish a completed step-256 evaluation.

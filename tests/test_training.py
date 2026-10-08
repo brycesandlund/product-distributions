@@ -5,6 +5,49 @@ import torch
 from product_distributions.training import TrainConfig, Trainer, completion_logits
 
 
+def test_alpha_schedule_boundaries_and_resume():
+    from dataclasses import asdict
+    config = TrainConfig(alpha=0.5, alpha_anneal_steps=128)
+    config.validate()
+    assert [config.alpha_at_step(k) for k in (0, 64, 127, 128, 255, 256)] == [
+        0.5, 0.25, 0.5 / 128, 0, 0, 0,
+    ]
+    resumed = TrainConfig(**asdict(config))
+    assert [resumed.alpha_at_step(k) for k in range(64, 256)] == [
+        config.alpha_at_step(k) for k in range(64, 256)
+    ]
+    assert TrainConfig(alpha=0.5).alpha_at_step(256) == 0.5
+
+
+def test_alpha_schedule_validation():
+    import pytest
+    for value in (0, -1, 1.5, True):
+        with pytest.raises(ValueError, match="alpha_anneal_steps"):
+            TrainConfig(alpha_anneal_steps=value).validate()
+    with pytest.raises(ValueError, match="requires imitation"):
+        TrainConfig(loss="opd_full", alpha_anneal_steps=128).validate()
+
+
+def test_resume_restores_schedule_position(tmp_path):
+    import json
+    from dataclasses import asdict
+    config = TrainConfig(alpha=0.5, alpha_anneal_steps=128, steps=256)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "config": {**asdict(config), "steps": 128}, "step": 128,
+        "imitation_weighting": "reward_interpolation_v1", "data_fingerprint": "same",
+    }))
+    trainer = object.__new__(Trainer)
+    trainer.config = config
+    trainer.step = 0
+    trainer.data_fingerprint = "same"
+    loaded = []
+    trainer.accelerator = SimpleNamespace(load_state=loaded.append)
+    trainer.resume(str(tmp_path))
+    assert loaded == [str(tmp_path)]
+    assert trainer.step == 128
+    assert trainer.config.alpha_at_step(trainer.step) == 0
+
+
 def test_fixed_teacher_validation():
     import pytest
     TrainConfig(loss="opd_full", alpha=0, fixed_self_teacher=True).validate()

@@ -31,6 +31,7 @@ class TrainConfig:
     fixed_self_teacher: bool = False
     loss: str = "imitation"
     alpha: float = 0.5
+    alpha_anneal_steps: int | None = None
     beta: float = 0.5
     reward_scale: float | None = None
     opd_pointwise_clip: float | None = None
@@ -49,7 +50,20 @@ class TrainConfig:
     extra_eos_token_ids: tuple[int, ...] = ()
     eval_batch_size: int = 1
 
+    def alpha_at_step(self, completed_steps: int) -> float:
+        """Rollout weight indexed by completed updates, including after resume."""
+        if completed_steps < 0:
+            raise ValueError("completed_steps must be nonnegative")
+        if self.alpha_anneal_steps is None:
+            return self.alpha
+        return self.alpha * max(1 - completed_steps / self.alpha_anneal_steps, 0.0)
+
     def validate(self):
+        if self.alpha_anneal_steps is not None:
+            if type(self.alpha_anneal_steps) is not int or self.alpha_anneal_steps <= 0:
+                raise ValueError("alpha_anneal_steps must be a positive integer")
+            if self.loss != "imitation":
+                raise ValueError("alpha_anneal_steps requires imitation")
         if self.fixed_self_teacher and not (
             self.teacher_model_id is None and
             (self.loss == "imitation" or (self.loss == "opd_full" and self.alpha == 0))
@@ -312,6 +326,7 @@ class Trainer:
 
     def update(self, examples):
         config = self.config
+        rollout_alpha = config.alpha_at_step(self.step)
         pairs = [self._prompts(e) for e in examples for _ in range(config.group_size)]
         student_prompts, teacher_prompts = map(list, zip(*pairs, strict=True))
         self.model.eval()
@@ -322,7 +337,7 @@ class Trainer:
             student_prompts,
             teacher_prompts,
             config=SamplingConfig(
-                teacher_weight=config.alpha,
+                teacher_weight=rollout_alpha,
                 temperature=1.0,
                 top_k=None,
                 top_p=None,
@@ -425,6 +440,7 @@ class Trainer:
         metrics = {
             "step": self.step,
             "loss_type": config.loss,
+            "alpha": rollout_alpha,
             "loss": loss_total,
             "reward_mean": rewards.mean().item(),
             "mean_weight": weights.mean().item() if config.loss == "imitation" else 1.0,
