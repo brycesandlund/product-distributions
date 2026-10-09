@@ -242,8 +242,8 @@ def run_segment(config, run_name, data_name, resume, successor):
         if Path(name).name != name:
             raise ValueError("Run and data names must be single path components")
     total = config["steps"]
-    if not 1 <= total <= 512 or config["model_id"] != "Qwen/Qwen3.5-4B":
-        raise ValueError("This runner is bounded to 512 steps of the 4B model")
+    if not 1 <= total <= 512 or config["model_id"] not in {"Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-0.8B"}:
+        raise ValueError("This runner is bounded to 512 steps of the 4B or 0.8B model")
     results_volume.reload()
     root = Path(RESULTS_PATH) / "runs" / run_name
     plan = recovery_plan(root, config, resume)

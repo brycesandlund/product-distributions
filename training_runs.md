@@ -1,6 +1,6 @@
 # Training runs and experimental results
 
-Snapshot date: 2026-10-08. All reported accuracies below are verifier scores,
+Snapshot date: 2026-10-09. All reported accuracies below are verifier scores,
 not human assessments of derivation quality. No new GPU jobs were launched to
 prepare this overview.
 
@@ -126,23 +126,26 @@ F: frozen question-only 9B OPD (alpha=0).
 G: frozen privileged-self-teacher product imitation (alpha=0.5).
 H: moving privileged-self-teacher product imitation, alpha 0.5→0 over 128
 updates, followed by 128 ordinary RL updates.
+I/J/K use the 0.8B student: ordinary RL / product RL with frozen question-only
+9B (alpha=0.5) / full-vocabulary OPD with frozen question-only 9B, respectively.
+A–H use the 4B student. K sees 16 distinct questions/update versus four for I/J.
 An em dash means no evaluation at that step, not zero accuracy.
 
-| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen | F: OPD, 9B | G: product, frozen self | H: annealed self → RL |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) |
-| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) | — | — | 65.62% (168/256) |
-| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) | 65.23% (167/256) | 66.80% (171/256) | 66.02% (169/256) |
-| 96 | — | — | — | — | 61.72% (158/256) | — | — | 62.89% (161/256) |
-| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) | 67.19% (172/256) | 61.72% (158/256) | 66.80% (171/256) |
-| 160 | — | — | — | — | 64.45% (165/256) | — | — | 67.97% (174/256) |
-| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) | 67.58% (173/256) | 60.94% (156/256) | 67.97% (174/256) |
-| 224 | — | — | — | — | — | — | — | 68.36% (175/256) |
-| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — | — | 0.39% (1/256) | 67.97% (174/256) |
-| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — | — | — | — |
-| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — | — | — | — |
-| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — | — | — | — |
-| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — | — | — | — |
+| Step | A: RL | B: product, self | C: product, 9B | D: OPSD, moving | E: OPSD, frozen | F: OPD, 9B | G: product, frozen self | H: annealed self → RL | I: 0.8B RL | J: 0.8B product, 9B | K: 0.8B OPD, 9B |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 62.50% (160/256) | 63.28% (162/256) | 63.28% (162/256) | 15.63% (40/256) | 15.63% (40/256) | 15.63% (40/256) |
+| 32 | — | — | — | 0.78% (2/256) | 63.67% (163/256) | — | — | 65.62% (168/256) | 20.31% (52/256) | 18.75% (48/256) | 27.34% (70/256) |
+| 64 | 66.02% (169/256) | 67.58% (173/256) | 65.23% (167/256) | — | 61.72% (158/256) | 65.23% (167/256) | 66.80% (171/256) | 66.02% (169/256) | 21.88% (56/256) | 16.41% (42/256) | 24.22% (62/256) |
+| 96 | — | — | — | — | 61.72% (158/256) | — | — | 62.89% (161/256) | 19.53% (50/256) | 15.63% (40/256) | 24.61% (63/256) |
+| 128 | 67.58% (173/256) | 67.19% (172/256) | 70.70% (181/256) | — | 61.72% (158/256) | 67.19% (172/256) | 61.72% (158/256) | 66.80% (171/256) | 24.61% (63/256) | 16.80% (43/256) | 26.95% (69/256) |
+| 160 | — | — | — | — | 64.45% (165/256) | — | — | 67.97% (174/256) | 21.09% (54/256) | 18.75% (48/256) | 26.17% (67/256) |
+| 192 | 69.92% (179/256) | 62.11% (159/256) | 70.70% (181/256) | — | 63.67% (163/256) | 67.58% (173/256) | 60.94% (156/256) | 67.97% (174/256) | 26.17% (67/256) | 17.58% (45/256) | 29.69% (76/256) |
+| 224 | — | — | — | — | — | — | — | 68.36% (175/256) | 25.78% (66/256) | 17.97% (46/256) | 30.47% (78/256) |
+| 256 | 69.14% (177/256) | 17.58% (45/256) | 0.00% (0/256)* | — | — | — | 0.39% (1/256) | 67.97% (174/256) | 27.34% (70/256) | 14.84% (38/256) | 28.52% (73/256) |
+| 320 | 68.36% (175/256) | 17.58% (45/256) | — | — | — | — | — | — | — | — | — |
+| 384 | 68.36% (175/256) | 16.02% (41/256) | — | — | — | — | — | — | — | — | — |
+| 448 | 70.70% (181/256) | 14.06% (36/256) | — | — | — | — | — | — | — | — | — |
+| 512 | 69.53% (178/256) | 13.67% (35/256) | — | — | — | — | — | — | — | — | — |
 
 **Standalone 9B teacher, step 0: 64.84% (166/256).** Evaluated October 6 on the
 same 256-question holdout with question-only, non-thinking concise prompts,
@@ -502,6 +505,50 @@ See `CALIBRATION_REPORT.md`, `NATIVE_INSPECTION_REPORT.md`, and
   an answer. This motivated separating correctness from clean completion.
 
 ## Hardware and systems tests
+
+### 0.8B production arms I/J/K (completed; verified October 9)
+
+Fresh Qwen3.5-0.8B revision `2fc06364715b967f1860aea9cf38778875588b17`,
+256 updates each, eval/checkpoint every 32, recovery-safe 64-update segments.
+Non-thinking concise prompt, temperature 1, 2K token cap, rank-16 LoRA,
+LR 2e-5, seed 42. Preflight adapters are not reused.
+All use `bigmath-opd-8192-v1` with the existing 256-question holdout.
+I/J consume the first 1,024 training questions; K consumes 4,096, without repeats.
+
+| Arm | Objective | GPU | Questions × rollouts/update | Status |
+| --- | --- | --- | --- | --- |
+| I | Ordinary RL, alpha=0, beta=0 | A10 | 4 × 4 | Completed 256; final 27.34% (70/256) |
+| J | Product RL, frozen question-only 9B, alpha=0.5, beta=0 | L40S | 4 × 4 | Completed 256; final 14.84% (38/256) |
+| K | Full-vocabulary OPD, frozen question-only 9B, alpha=0, no reward weighting | L40S | 16 × 1 | Completed 256; final 28.52% (73/256) |
+
+All started at 15.63% (40/256). I peaked at 256; J peaked at 18.75% at
+32/160; K peaked at 30.47% (78/256) at 224. K finished three questions ahead
+of I after seeing four times as many distinct training questions; this does
+not establish a token-efficiency advantage. Final mean response lengths:
+I 1,379.79, J 146.13, K 1,375.64 tokens; capped responses: 121, 0, 154/256.
+All final checkpoint reload checks returned zero max-logit error; zero active
+tasks confirmed. Checkpoint-000256 is under each run's final segment:
+I `segment-000256-attempt-4495bc8db6cc`,
+J `segment-000256-attempt-f94a01ac439b`,
+K `segment-000256-attempt-f6be2a59cd6a`.
+
+Teacher revision: `c202236235762e1c871ad0ccb60c8ee5ba337b9a`.
+Pinned configs: `product_distributions/arms_08b.py`; entrypoint:
+`modal_08b_training.py`; app `product-distributions-08b-training`.
+Remote directories: `runs/bigmath-08b-{I,J,K}-256-20261008` on
+`product-distributions-results`. Each function has a 12-hour segment timeout;
+no early-stop monitor was configured. All 52 local tests passed before launch.
+
+The bounded 0.8B preflights passed all three updates, full-length memory
+stress, frozen-teacher checks where applicable, and checkpoint reload.
+Mean rollout+update seconds: RL A10 114 versus L4 205; product L40S 175;
+OPD L40S 144. Peak allocation: RL 9.45 GiB, product 26.98 GiB, OPD 26.16 GiB.
+The requested A100-40GB pilots actually reported A100-SXM4-80GB; product
+averaged 158 seconds/update and OPD 166, with inconsistent decode-stress
+advantages. They are not verified physical 40GB benchmarks.
+Raw reports: `hardware-benchmarks/qwen08b-preflight-20261008/`.
+Baseline accuracy was only 1/16 in both ordinary-RL pilots, too small a sample
+to establish full-holdout accuracy. These are feasibility tests, not learning curves.
 
 September 28 addition: the 4B privileged self-teacher **ordinary full-vocabulary
 OPSD** preflight passed on A10 after chunking/checkpointing KL intermediates to
