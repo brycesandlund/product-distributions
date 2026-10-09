@@ -3,6 +3,10 @@
 Experiments in guided on-policy distillation using a weighted geometric mean of
 student and privileged-context next-token distributions.
 
+## Research notes
+
+- [Inference time product distributions literature review](INFERENCE_LITERATURE_REVIEW.md)
+
 ## Local setup
 
 Only the Modal client runs locally. CUDA and model dependencies are pinned in
